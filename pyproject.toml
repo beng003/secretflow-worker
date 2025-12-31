@@ -1,7 +1,12 @@
 [project]
 name = "secretflow-test"
 version = "0.1.0"
-description = "Add your description here"
+description = "SecretFlow隐私计算测试项目"
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = []
+dependencies = [
+    "secretflow==1.12.0b0",
+]
+
+[tool.uv]
+prerelease = "allow"
