@@ -1,11 +1,22 @@
 [project]
-name = "secretflow-test"
+name = "secretflow-backend"
 version = "0.1.0"
-description = "SecretFlow隐私计算测试项目"
+description = "SecretFlow隐私计算生产模式后端服务"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "secretflow==1.12.0b0",
+    "celery[redis]==5.3.4",
+    "redis==5.0.1",
+    "pydantic==2.5.0",
+    "pydantic-settings==2.1.0",
+    "structlog==23.2.0",
+    "cryptography==41.0.7",
+    "kombu==5.3.4",
+    "billiard==4.2.0",
+    "python-jose[cryptography]==3.3.0",
+    "passlib[bcrypt]==1.7.4",
+    "flower==2.0.1",
 ]
 
 [tool.uv]
