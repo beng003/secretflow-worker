@@ -1,0 +1,80 @@
+version: '3.8'
+
+services:
+  alice:
+    build:
+      context: ./alice
+      dockerfile: Dockerfile
+    container_name: sf_alice
+    hostname: alice
+    networks:
+      secretflow_net:
+        ipv4_address: 192.168.100.10
+    ports:
+      - "8010:8000"   # HTTP服务端口
+      - "9404:9394"   # Ray head端口
+      - "12955:12945" # SPU通信端口
+    volumes:
+      - ./data/alice:/data/alice
+      - ./scripts:/scripts
+      - ../:/workspace
+    environment:
+      - PARTY_NAME=alice
+      - ALICE_ADDRESS=192.168.100.10:12945
+      - BOB_ADDRESS=192.168.100.20:12946
+      - RAY_HEAD_ADDRESS=192.168.100.10:9394
+      - PYTHONPATH=/workspace
+    working_dir: /workspace
+    command: >
+      bash -c "
+        echo 'Starting Alice node...' &&
+        sleep 3 &&
+        python /scripts/alice_psi.py
+      "
+    depends_on:
+      - bob
+    tty: true
+    stdin_open: true
+
+  bob:
+    build:
+      context: ./bob
+      dockerfile: Dockerfile
+    container_name: sf_bob
+    hostname: bob
+    networks:
+      secretflow_net:
+        ipv4_address: 192.168.100.20
+    ports:
+      - "8011:8001"   # HTTP服务端口
+      - "12956:12946" # SPU通信端口
+    volumes:
+      - ./data/bob:/data/bob
+      - ./scripts:/scripts
+      - ../:/workspace
+    environment:
+      - PARTY_NAME=bob
+      - ALICE_ADDRESS=192.168.100.10:12945
+      - BOB_ADDRESS=192.168.100.20:12946
+      - RAY_HEAD_ADDRESS=192.168.100.10:9394
+      - PYTHONPATH=/workspace
+    working_dir: /workspace
+    command: >
+      bash -c "
+        echo 'Starting Bob node...' &&
+        sleep 5 &&
+        python /scripts/bob_psi.py
+      "
+    tty: true
+    stdin_open: true
+
+networks:
+  secretflow_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 192.168.100.0/24
+
+volumes:
+  alice_data:
+  bob_data:
