@@ -23,19 +23,18 @@ RUN useradd -m -s /bin/bash secretflow && \
     chmod 755 /data/bob /scripts && \
     chown -R secretflow:secretflow /data/bob /scripts /workspace
 
-# 安装 Python 包（不包含 Ray）
+# 安装 Ray 和 SecretFlow
 RUN pip install --upgrade pip setuptools wheel && \
     pip install --no-cache-dir \
+        ray[default]==2.5.1 \
+        grpcio==1.51.3 && \
+    pip install --no-cache-dir --pre secretflow
+
+# 安装额外的依赖包
+RUN pip install --no-cache-dir \
         pandas==1.5.3 \
         numpy==1.26.4 \
-        scikit-learn==1.5.2 \
-        grpcio==1.51.3 \
-        protobuf==4.25.8 \
-        cloudpickle==3.1.2 \
-        cryptography==46.0.3
-
-# 安装 SecretFlow（允许预发布版本）
-RUN pip install --no-cache-dir --pre secretflow
+        scikit-learn==1.5.2
 
 # 切换到非root用户
 USER secretflow

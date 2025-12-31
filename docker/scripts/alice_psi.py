@@ -96,18 +96,41 @@ def run_psi():
         # 创建示例数据
         alice_input_path = create_sample_data()
         
+        # 启动 Alice 的 Ray head 节点
+        import ray
+        logger.info("Starting Alice Ray head node...")
+        ray.init(
+            include_dashboard=False,
+            ignore_reinit_error=True
+        )
+        logger.info("Alice Ray head node started successfully")
+        
         # 等待 Bob 准备就绪
         wait_for_bob()
         
-        # 获取集群配置
-        cluster_config = setup_cluster_config()
-        ray_address = os.getenv('RAY_HEAD_ADDRESS', '172.20.0.10:9394')
+        # p2p 模式集群配置
+        cluster_config = {
+            'parties': {
+                'alice': {
+                    'address': os.getenv('ALICE_ADDRESS', '192.168.100.10:12945'),
+                    'listen_addr': '0.0.0.0:12945'
+                },
+                'bob': {
+                    'address': os.getenv('BOB_ADDRESS', '192.168.100.20:12946'),
+                    'listen_addr': '0.0.0.0:12946'
+                }
+            },
+            'self_party': 'alice'
+        }
         
-        logger.info(f"Initializing SecretFlow with ray address: {ray_address}")
+        # Alice 连接到自己的 Ray head 地址（生产模式）
+        alice_ray_address = 'localhost:10001'  # Ray默认端口
+        
+        logger.info(f"Initializing SecretFlow with Alice Ray address: {alice_ray_address}")
         logger.info(f"Cluster config: {cluster_config}")
         
-        # 初始化 SecretFlow（使用模拟模式）
-        sf.init(parties=['alice', 'bob'], address='local')
+        # 根据生产模式文档初始化 SecretFlow
+        sf.init(address=alice_ray_address, cluster_config=cluster_config)
         
         # 创建 PYU 设备
         alice = sf.PYU('alice')
