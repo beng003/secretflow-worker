@@ -1,87 +1,83 @@
 """
-Celery 应用配置
-基于 SecretFlow 生产模式的分布式隐私计算任务队列
+Celery应用配置
+
+按照celery_todo.md 3.1.1要求重构Celery应用实例：
+- 集成重构后的配置系统 (config.celery_config)
+- 修复任务路由和队列配置
+- 移除不存在的任务引用
+- 任务发现路径调整为新的目录结构
 """
+
+import os
+import multiprocessing
 from celery import Celery
-from src.config.settings import celery_config, settings
-from src.utils.logger import get_logger
 
-logger = get_logger(__name__)
+from src.log import logger
+from .config.celery_config import get_celery_config
 
-def create_celery_app() -> Celery:
-    """创建 Celery 应用实例"""
-    
-    app = Celery(
-        "secretflow_backend",
-        broker=celery_config.broker_url,
-        backend=celery_config.result_backend,
-        include=[
-            'src.tasks.privacy_computing',
-            'src.tasks.data_processing', 
-            'src.tasks.cluster_management',
-            'src.tasks.health_check',
-        ]
-    )
-    
-    # 应用配置
-    app.conf.update(celery_config.get_celery_config())
-    
-    # 自定义配置 - 单任务模式，确保每个worker同时只执行一个SecretFlow任务
-    app.conf.update(
-        # 队列配置
-        task_default_queue="default",
-        task_create_missing_queues=True,
-        
-        # 任务优先级
-        task_inherit_parent_priority=True,
-        task_default_priority=5,
-        
-        # 工作进程配置 - 单任务模式
-        worker_concurrency=1,  # 每个worker只有1个并发
-        worker_prefetch_multiplier=1,  # 每次只预取1个任务
-        task_acks_late=True,  # 任务完成后再确认
-        worker_max_tasks_per_child=10,  # 减少每个子进程的任务数，避免内存泄漏
-        worker_max_memory_per_child=2048 * 1024,  # 2GB内存限制
-        
-        # 任务执行配置
-        task_reject_on_worker_lost=True,  # worker丢失时拒绝任务
-        task_track_started=True,  # 跟踪任务开始状态
-        
-        # 安全配置
-        worker_disable_rate_limits=False,
-        
-        # 监控配置
-        task_send_sent_event=True,
-        worker_send_task_events=True,
-        
-        # 结果配置
-        result_expires=7200,  # 结果保存2小时
-        result_persistent=True,  # 持久化结果
-    )
-    
-    logger.info(f"Celery app created for node {settings.node_id}")
-    logger.info(f"Broker URL: {celery_config.broker_url}")
-    logger.info(f"Result Backend: {celery_config.result_backend}")
-    
-    return app
+# 获取配置实例
+celery_config = get_celery_config()
 
-# 创建全局 Celery 应用实例
-celery_app = create_celery_app()
+# 创建Celery实例
+celery_app = Celery("privacy_computing")
 
-@celery_app.on_after_configure.connect
-def setup_periodic_tasks(sender, **kwargs):
-    """设置周期性任务"""
-    from src.tasks.health_check import node_health_check
-    
-    # 每30秒执行健康检查
-    sender.add_periodic_task(
-        30.0, 
-        node_health_check.s(),
-        name="node_health_check",
-    )
+# 应用完整配置
+celery_settings = celery_config.get_celery_settings()
+celery_app.config_from_object(celery_settings)
 
-@celery_app.task(bind=True)
-def debug_task(self):
-    """调试任务"""
-    logger.info(f"Request: {self.request!r}")
-    return f"Debug task executed on node {settings.node_id}"
+# 日志记录配置信息
+current_pid = os.getpid()
+
+logger.info("Celery应用配置加载完成")
+logger.debug(f"Redis Broker: {celery_config.broker_url}")
+logger.debug(f"任务队列数量: {len(celery_config.task_queues)}")
+logger.debug(f"任务模块: {celery_config.include}")
+logger.debug(f"定时任务数量: {len(celery_config.beat_schedule)}")
+logger.info(f"🚀 进程配置: PID:{current_pid} | Worker进程数:{celery_config.settings.CELERY_WORKER_CONCURRENCY}")
+
+
+# 运行时配置验证
+def validate_celery_setup():
+    """
+    验证Celery应用配置的完整性
+
+    在应用启动时检查：
+    - 配置有效性
+    - 任务模块可导入性
+    - 队列和路由配置正确性
+    """
+    try:
+        # 1. 验证配置
+        celery_config.validate_config()
+        logger.info("✅ Celery配置验证通过")
+
+        # 2. 验证任务模块可导入性
+        for module_path in celery_config.include:
+            try:
+                __import__(module_path)
+                logger.debug(f"✅ 任务模块 {module_path} 导入成功")
+            except ImportError as e:
+                logger.warning(f"⚠️ 任务模块 {module_path} 导入失败: {e}")
+
+        # 3. 验证队列配置
+        queue_names = [q.name for q in celery_config.task_queues]
+        logger.info(f"✅ 配置队列: {queue_names}")
+
+        # 4. 验证路由配置
+        route_count = len(celery_config.task_routes)
+        logger.info(f"✅ 配置路由规则: {route_count} 个")
+
+        # 5. 验证定时任务
+        beat_tasks = list(celery_config.beat_schedule.keys())
+        logger.info(f"✅ 配置定时任务: {beat_tasks}")
+
+        return True
+
+    except Exception as e:
+        logger.error(f"❌ Celery配置验证失败: {e}")
+        return False
+
+
+# 启动时验证配置
+if __name__ != "__main__":
+    validate_celery_setup()

@@ -18,34 +18,17 @@ services:
       retries: 3
 
   # Alice 节点 (参与方 A) - 构建镜像
-  secretflow-worker-alice:
+  secretflow-worker:
     build: 
       context: ..
       dockerfile: Dockerfile
-    image: secretflow-backend:latest
-    container_name: secretflow-worker-alice
+    image: secretflow-worker:latest
+    container_name: secretflow-worker
     depends_on:
       redis:
         condition: service_healthy
-    environment:
-      NODE_ID: alice
-      NODE_IP: secretflow-worker-alice
-      NODE_PORT: 9394
-      NODE_TYPE: worker
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      REDIS_DB: 0
-      CELERY_BROKER_URL: redis://redis:6379/0
-      CELERY_RESULT_BACKEND: redis://redis:6379/0
-      CLUSTER_CONFIG: '{"alice": "secretflow-worker-alice:9394", "bob": "secretflow-worker-bob:9394"}'
-      CLUSTER_NODES: secretflow-worker-alice:9394,secretflow-worker-bob:9394
-      SECURITY_TOKEN: demo-security-token-change-in-production
-      DATA_PATH: /app/data
-      LOG_LEVEL: INFO
-      MAX_CONCURRENT_TASKS: 4
-      TASK_TIMEOUT: 3600
-      RAY_HEAD_IP: secretflow-worker-alice
-      RAY_HEAD_PORT: 10001
+    env_file:
+      - ../.env.docker
     volumes:
       - alice_data:/app/data
       - alice_logs:/app/logs
@@ -61,73 +44,6 @@ services:
         limits:
           memory: 4G
           cpus: '2'
-
-  # Bob 节点 (参与方 B) - 复用镜像
-  secretflow-worker-bob:
-    image: secretflow-backend:latest
-    container_name: secretflow-worker-bob
-    depends_on:
-      redis:
-        condition: service_healthy
-      secretflow-worker-alice:
-        condition: service_started
-    environment:
-      NODE_ID: bob
-      NODE_IP: secretflow-worker-bob
-      NODE_PORT: 9394
-      NODE_TYPE: worker
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      REDIS_DB: 0
-      CELERY_BROKER_URL: redis://redis:6379/0
-      CELERY_RESULT_BACKEND: redis://redis:6379/0
-      CLUSTER_CONFIG: '{"alice": "secretflow-worker-alice:9394", "bob": "secretflow-worker-bob:9394"}'
-      CLUSTER_NODES: secretflow-worker-alice:9394,secretflow-worker-bob:9394
-      SECURITY_TOKEN: demo-security-token-change-in-production
-      DATA_PATH: /app/data
-      LOG_LEVEL: INFO
-      MAX_CONCURRENT_TASKS: 4
-      TASK_TIMEOUT: 3600
-      RAY_HEAD_IP: secretflow-worker-alice
-      RAY_HEAD_PORT: 10001
-    volumes:
-      - bob_data:/app/data
-      - bob_logs:/app/logs
-      - /dev/shm:/dev/shm
-    ports:
-      - "9395:9394"
-      - "10002:10001"
-    networks:
-      - secretflow-network
-    restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 4G
-          cpus: '2'
-
-  # Flower - Celery 监控界面
-  flower:
-    image: mher/flower:latest
-    container_name: secretflow-flower
-    depends_on:
-      redis:
-        condition: service_healthy
-    environment:
-      CELERY_BROKER_URL: redis://redis:6379/0
-      FLOWER_PORT: 5555
-      FLOWER_BASIC_AUTH: admin:secretflow2024
-    ports:
-      - "5555:5555"
-    networks:
-      - secretflow-network
-    restart: unless-stopped
-    command: 
-      - celery
-      - flower
-      - --broker=redis://redis:6379/0
-      - --port=5555
-      - --basic_auth=admin:secretflow2024
 
   # 可选：Redis Commander - Redis 管理界面
   redis-commander:
@@ -152,10 +68,6 @@ volumes:
   alice_data:
     driver: local
   alice_logs:
-    driver: local
-  bob_data:
-    driver: local
-  bob_logs:
     driver: local
 
 networks:
