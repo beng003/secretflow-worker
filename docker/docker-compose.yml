@@ -17,11 +17,12 @@ services:
       timeout: 10s
       retries: 3
 
-  # Alice 节点 (参与方 A)
+  # Alice 节点 (参与方 A) - 构建镜像
   secretflow-worker-alice:
     build: 
       context: ..
       dockerfile: Dockerfile
+    image: secretflow-backend:latest
     container_name: secretflow-worker-alice
     depends_on:
       redis:
@@ -61,11 +62,9 @@ services:
           memory: 4G
           cpus: '2'
 
-  # Bob 节点 (参与方 B)
+  # Bob 节点 (参与方 B) - 复用镜像
   secretflow-worker-bob:
-    build: 
-      context: ..
-      dockerfile: Dockerfile
+    image: secretflow-backend:latest
     container_name: secretflow-worker-bob
     depends_on:
       redis:
