@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Any, Dict
 
 # 使用项目统一的日志系统
-# from src.log import logger
+# from src.utils.log import logger
 
 
 def local_psi_test() -> Dict[str, Any]:

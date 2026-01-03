@@ -10,7 +10,7 @@ class LoggingConfig:
     """统一日志配置管理"""
 
     def __init__(self) -> None:
-        self.debug = settings.DEBUG
+        self.debug = settings.debug
         self.level = "DEBUG" if self.debug else "INFO"
         self.log_dir = "logs"
         self.ensure_log_dir()

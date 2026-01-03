@@ -18,7 +18,7 @@ from typing import Any
 
 from celery import Task
 
-from src.log import logger
+from src.utils.log import logger
 
 
 class TaskMetadata:

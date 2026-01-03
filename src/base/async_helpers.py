@@ -13,7 +13,7 @@ from collections.abc import Awaitable, Callable
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, TypeVar
 
-from src.log import logger
+from src.utils.log import logger
 
 # 类型定义
 T = TypeVar("T")

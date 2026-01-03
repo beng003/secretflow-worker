@@ -25,12 +25,12 @@ class CeleryConfig:
     @property
     def broker_url(self) -> str:
         """Redis broker URL，直接使用settings.REDIS_URL"""
-        return self.settings.REDIS_URL
+        return self.settings.redis_url
 
     @property
     def result_backend(self) -> str:
         """Redis结果后端URL，直接使用settings.REDIS_URL"""
-        return self.settings.REDIS_URL
+        return self.settings.redis_url
 
     @property
     def task_serializer(self) -> str:
@@ -201,7 +201,7 @@ class CeleryConfig:
     def redis_config(self) -> dict:
         """Redis配置信息"""
         return {
-            "url": self.settings.REDIS_URL,
+            "url": self.settings.redis_url,
             "cache_ttl": self.settings.CACHE_TTL,
         }
 
@@ -272,8 +272,8 @@ class CeleryConfig:
         # 数据库配置验证已移除 - 任务层不再依赖数据库连接
 
         # 验证生产环境配置
-        if self.settings.APP_ENV == "production":
-            if self.settings.DEBUG:
+        if self.settings.app_env == "production":
+            if self.settings.debug:
                 raise ValueError("生产环境不能启用DEBUG模式")
 
             if "localhost" in self.broker_url:

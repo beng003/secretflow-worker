@@ -131,7 +131,9 @@ def execute_secretflow_task(
     heu_config: Dict[str, Any],
     task_config: Dict[str, Any]
 ) -> Dict[str, Any]:
-    """SecretFlow任务执行标准函数
+    """SecretFlow任务执行标准函数 - 同步版本
+    
+    注意: SecretFlow框架的用户API主要是同步的，因此主执行流程采用同步模式
     
     Args:
         task_request_id: 任务请求唯一标识符
@@ -154,36 +156,62 @@ def execute_secretflow_task(
 ### 执行流程标准化
 
 ```python
-async def execute_secretflow_task(task_request_id, sf_init_config, spu_config, heu_config, task_config):
+def execute_secretflow_task(task_request_id, sf_init_config, spu_config, heu_config, task_config):
+    """SecretFlow任务执行主函数 - 同步实现
+    
+    基于SecretFlow同步API的实际特性设计的执行流程
+    """
+    import secretflow as sf
+    import time
+    from log import logger  # 假设项目有统一的日志模块
+    
+    start_time = time.time()
+    
     try:
-        # 1. 发布任务开始状态
-        await _publish_status("RUNNING", {"stage": "task_started"})
+        # 1. 同步发布任务开始状态
+        _publish_status(task_request_id, "RUNNING", {"stage": "task_started"})
         
-        # 2. 初始化SecretFlow集群 
-        await _initialize_sf_cluster(sf_init_config)
-        await _publish_status("RUNNING", {"stage": "sf_cluster_ready"})
+        # 2. 同步初始化SecretFlow集群
+        sf.init(
+            parties=sf_init_config["parties"],
+            address=sf_init_config.get("address", "auto"),
+            cross_silo_comm_backend=sf_init_config.get("cross_silo_comm_backend", "brpc_link")
+        )
+        _publish_status(task_request_id, "RUNNING", {"stage": "sf_cluster_ready"})
         
-        # 3. 条件初始化SPU设备
-        if spu_config.get("enable_spu", True):
-            await _initialize_spu_device(spu_config)
-            await _publish_status("RUNNING", {"stage": "spu_device_ready"})
-            
-        # 4. 条件初始化HEU设备  
-        if heu_config.get("enable_heu", True):
-            await _initialize_heu_device(heu_config)
-            await _publish_status("RUNNING", {"stage": "heu_device_ready"})
-            
-        # 5. 执行具体任务
-        result = await _execute_task_by_type(task_config)
-        await _publish_status("SUCCESS", {"result": result})
+        # 3. 同步初始化设备(按需)
+        devices = _initialize_devices(spu_config, heu_config)
+        _publish_status(task_request_id, "RUNNING", {
+            "stage": "devices_ready",
+            "devices_initialized": list(devices.keys())
+        })
+        
+        # 4. 同步执行具体任务
+        result = _execute_task_by_type(task_config, devices)
+        execution_time = time.time() - start_time
+        
+        # 5. 发布成功状态
+        _publish_status(task_request_id, "SUCCESS", {
+            "result": result,
+            "execution_time": execution_time
+        })
         
         return result
         
     except Exception as e:
-        await _publish_status("FAILURE", {"error": str(e)})
+        execution_time = time.time() - start_time
+        _publish_status(task_request_id, "FAILURE", {
+            "error": str(e),
+            "error_type": type(e).__name__,
+            "execution_time": execution_time
+        })
         raise
     finally:
-        await _cleanup_resources()
+        # 清理SecretFlow资源
+        try:
+            sf.shutdown()
+        except Exception as cleanup_error:
+            logger.warning(f"资源清理警告: {cleanup_error}")
 ```
 
 ## 参数验证与安全设计
@@ -257,7 +285,7 @@ class NewAlgorithmExecutor(BaseTaskExecutor):
         # 新算法参数验证
         pass
         
-    async def execute_algorithm(self, algorithm_params):
+    def execute_algorithm(self, algorithm_params):
         # 新算法执行逻辑
         pass
 ```
@@ -294,23 +322,72 @@ gpu_config:
 
 ### 初始化优化
 
-**并行初始化**: SPU和HEU设备可并行初始化，减少总体启动时间：
+**按需初始化**: 基于SecretFlow同步API的特性，采用按需顺序初始化策略：
 
 ```python
-async def initialize_devices_parallel(spu_config, heu_config):
-    tasks = []
+def _initialize_devices(spu_config, heu_config):
+    """按需初始化SecretFlow计算设备
     
+    SecretFlow的设备API是同步的，因此采用顺序初始化
+    优化策略主要是避免不必要的设备初始化
+    """
+    devices = {}
+    
+    # 按需初始化SPU设备
     if spu_config.get("enable_spu", True):
-        tasks.append(_initialize_spu_device(spu_config))
+        logger.info("初始化SPU设备...")
+        start_time = time.time()
         
+        cluster_def = sf.utils.testing.cluster_def(spu_config["parties"])
+        spu_device = sf.SPU(
+            cluster_def=cluster_def,
+            link_desc=spu_config["link_desc"]
+        )
+        devices["spu"] = spu_device
+        
+        init_time = time.time() - start_time
+        logger.info(f"SPU设备初始化完成，耗时: {init_time:.2f}秒")
+        
+    # 按需初始化HEU设备
     if heu_config.get("enable_heu", True):
-        tasks.append(_initialize_heu_device(heu_config))
+        logger.info("初始化HEU设备...")
+        start_time = time.time()
         
-    # 并行执行设备初始化
-    await asyncio.gather(*tasks)
+        heu_device = sf.HEU(
+            config=heu_config,
+            server_party=spu_config["parties"][0]  # 使用第一个参与方作为服务器
+        )
+        devices["heu"] = heu_device
+        
+        init_time = time.time() - start_time
+        logger.info(f"HEU设备初始化完成，耗时: {init_time:.2f}秒")
+    
+    return devices
 ```
 
 **配置缓存**: 相同配置的设备实例可复用，避免重复初始化开销。
+**同步状态上报**: 基于SecretFlow长时间运行任务的特性，采用简洁可靠的同步状态上报：
+
+```python
+def _publish_status(task_request_id: str, status: str, data: dict):
+    """同步状态上报 - 简洁可靠的实现
+    
+    优势:
+    - 代码简洁，易于维护
+    - 状态更新可靠，错误容易追踪
+    - 资源占用小，无需额外线程
+    - Redis本地操作延迟可忽略(<1ms)
+    """
+    try:
+        from utils.status_notifier import _publish_task_event
+        _publish_task_event(task_request_id, status, data, "task.secretflow")
+        logger.debug(f"状态已上报: {task_request_id} -> {status}")
+        
+    except Exception as e:
+        # 使用warning级别，不影响主任务执行
+        logger.warning(f"状态上报失败，但不影响任务执行: {e}")
+        # 注意：不抛出异常，确保状态上报失败不会中断SecretFlow计算
+```
 
 ### 内存管理优化
 
@@ -356,14 +433,3 @@ sf_init_config:
 - 详细的执行日志记录
 - 任务参数和执行环境快照
 - 错误堆栈和上下文信息
-
-## 总结
-
-本设计基于分层解耦、条件可选、类型驱动的核心原则，为SecretFlow Worker端提供了标准化、可扩展的参数格式。通过与现有Redis状态监听系统的深度集成，确保任务执行状态的实时可观测性。设计充分考虑了性能优化、安全性和可维护性要求，为后续功能扩展奠定了坚实基础。
-
-**关键优势**:
-- **标准化**: 统一的函数签名和参数格式
-- **灵活性**: 支持不同任务类型和设备组合
-- **可靠性**: 完善的错误处理和状态监控
-- **可扩展性**: 面向未来的架构设计
-- **可维护性**: 清晰的分层结构和职责划分

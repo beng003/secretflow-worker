@@ -12,7 +12,7 @@ from typing import Any
 from celery import Task
 
 # 使用项目统一的loguru日志系统，替代celery日志
-from src.log import logger
+from src.utils.log import logger
 
 
 class BaseTask(Task, ABC):

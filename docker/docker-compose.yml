@@ -3,8 +3,8 @@ services:
   redis:
     image: redis:7-alpine
     container_name: secretflow-redis
-    ports:
-      - "6379:6379"
+    # ports:
+    #   - "6379:6379"
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
@@ -19,16 +19,16 @@ services:
 
   # Alice 节点 (参与方 A) - 构建镜像
   secretflow-worker:
-    build: 
-      context: ..
-      dockerfile: Dockerfile
+    # build: 
+    #   context: ..
+    #   dockerfile: Dockerfile
     image: secretflow-worker:latest
     container_name: secretflow-worker
     depends_on:
       redis:
         condition: service_healthy
     env_file:
-      - ../.env.docker
+      - ../.env.secretflow
     volumes:
       - alice_data:/app/data
       - alice_logs:/app/logs
@@ -44,23 +44,6 @@ services:
         limits:
           memory: 4G
           cpus: '2'
-
-  # 可选：Redis Commander - Redis 管理界面
-  redis-commander:
-    image: rediscommander/redis-commander:latest
-    container_name: secretflow-redis-commander
-    depends_on:
-      redis:
-        condition: service_healthy
-    environment:
-      REDIS_HOSTS: local:redis:6379
-      HTTP_USER: admin
-      HTTP_PASSWORD: secretflow2024
-    ports:
-      - "8081:8081"
-    networks:
-      - secretflow-network
-    restart: unless-stopped
 
 volumes:
   redis_data:

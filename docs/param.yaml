@@ -34,6 +34,8 @@ sf_init_config:
         logging_level: "info"
         enable_gpu: false
 
+    # 等其他集群相关配置
+
 # 2. SPU设备初始化配置 (spu.init所需参数)
 spu_config:
   description: "安全处理单元(SPU)设备配置参数"
@@ -96,6 +98,7 @@ spu_config:
           type: "int"
           description: "HTTP超时时间(毫秒)" 
           default: 1200000
+  # 等其他SPU参数
 
 # 3. HEU设备初始化配置 (heu.init所需参数)
 heu_config:
@@ -126,6 +129,7 @@ heu_config:
       options: [1024, 2048, 3072, 4096]
       default: 2048
       example: 2048
+  # 等其他HEU参数
 
 # 4. 任务特定配置 (根据不同任务类型变化)
 task_config:
@@ -154,21 +158,13 @@ task_config:
       description: "输入数据配置"
       required: true
       schema:
-        input_ids:
-          type: "list[str]"
-          description: "输入数据标识符列表"
-          example: ["alice-table", "bob-table"]
-          
-        data_sources:
-          type: "dict"
-          description: "各参与方数据源配置映射"
-          example:
-            alice: 
-              source_id: "default-data-source"
-              data_path: "/data/alice"
-            bob:
-              source_id: "default-data-source"
-              data_path: "/data/bob"
+        type: "dict"
+        description: "各参与方数据源配置映射"
+        example:
+          alice: 
+            data_path: "/data/alice/alice-data.csv"
+          bob:
+            data_path: "/data/bob/bob-data.csv"
     
     # 输出数据配置  
     output_data:
@@ -176,15 +172,13 @@ task_config:
       description: "输出数据配置"
       required: true
       schema:
-        output_ids:
-          type: "list[str]"
-          description: "输出数据标识符列表"
-          example: ["psi-output-0", "psi-output-1"]
-          
-        output_uris:
-          type: "list[str]"  
-          description: "输出数据URI路径列表"
-          example: ["psi-output-0", "psi-output-1"]
+          type: "dict"
+          description: "各参与方数据源配置映射"
+          example:
+            alice: 
+              data_path: "/data/alice/alice-data-output.csv"
+            bob:
+              data_path: "/data/bob/bob-data-output.csv"
     
     # 算法特定参数 (根据task_type动态变化)
     algorithm_params:
@@ -297,17 +291,15 @@ function_call_example:
       domain: "data_prep"
       version: "1.0.0"
       input_data:
-        input_ids: ["alice-table", "bob-table"]
-        data_sources:
-          alice:
-            source_id: "default-data-source"
-            data_path: "/data/alice"
-          bob:
-            source_id: "default-data-source"
-            data_path: "/data/bob"
+        alice:
+          data_path: "/data/alice/ml/data-alice.csv"
+        bob:
+          data_path: "/data/bob/ml/data-bob.csv"
       output_data:
-        output_ids: ["psi-output-0", "psi-output-1"]
-        output_uris: ["psi-output-0", "psi-output-1"]
+        alice:
+          data_path: "/data/alice/ml/data-alice-output.csv"
+        bob:
+          data_path: "/data/bob/ml/data-bob-output.csv"
       algorithm_params:
         input_keys:
           alice_keys: ["id1"]
@@ -351,20 +343,19 @@ function_call_example:
       domain: "ml.train"
       version: "1.0.0"
       input_data:
-        input_ids: ["train-data-alice", "train-data-bob", "train-data-charlie"]
-        data_sources:
-          alice:
-            source_id: "alice-ml-source"
-            data_path: "/data/alice/ml"
-          bob:
-            source_id: "bob-ml-source"
-            data_path: "/data/bob/ml"
-          charlie:
-            source_id: "charlie-ml-source"
-            data_path: "/data/charlie/ml"
+        alice:
+          data_path: "/data/alice/ml/train-data-alice.csv"
+        bob:
+          data_path: "/data/bob/ml/train-data-bob.csv"
+        charlie:
+          data_path: "/data/charlie/ml/train-data-charlie.csv"
       output_data:
-        output_ids: ["trained-model"]
-        output_uris: ["models/lr_model_v1"]
+        alice:
+          data_path: "/data/alice/ml/train-data-alice-output.csv"
+        bob:
+          data_path: "/data/bob/ml/train-data-bob-output.csv"
+        charlie:
+          data_path: "/data/charlie/ml/train-data-charlie-output.csv"
       algorithm_params:
         features: ["age", "income", "education"]
         label: "credit_score"
