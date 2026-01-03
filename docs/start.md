@@ -40,9 +40,7 @@ celery -A src.celery_app beat --loglevel=info --scheduler django_celery_beat.sch
 ```bash
 # 发起 hello 任务
 celery -A src.celery_app call tasks.secretflow.hello.hello_task
-
-# 发起网络诊断任务
-celery -A src.celery_app call tasks.web.diagnostics.run_network_sync --kwargs='{"node_id":"node_001","test_types":["ping","dns"]}'
+celery -A src.celery_app call tasks.secretflow.local_test.local_psi_test
 
 # 查看任务结果
 celery -A src.celery_app result <task_id>

@@ -1,0 +1,399 @@
+# SecretFlow Worker端函数输入参数格式设计
+# 基于sf.init, spu.init, heu.init和任务执行参数的标准化格式
+
+# 标准SecretFlow任务执行函数签名
+# execute_secretflow_task(task_request_id: str, sf_init_config: dict, spu_config: dict, heu_config: dict, task_config: dict)
+
+# 1. SecretFlow集群初始化配置 (sf.init所需参数)
+sf_init_config:
+  description: "SecretFlow集群初始化所需的核心参数"
+  schema:
+    parties:
+      type: "list[str]"
+      description: "参与计算的所有参与方标识列表"
+      example: ["alice", "bob"]
+      required: true
+      
+    address:
+      type: "str"  
+      description: "Ray集群地址，通常设为'auto'进行自动发现"
+      default: "auto"
+      example: "auto"
+      
+    cross_silo_comm_backend:
+      type: "str"
+      description: "跨数据孤岛通信后端协议"
+      default: "brpc_link"
+      options: ["brpc_link", "grpc", "http"]
+      
+    cluster_config:
+      type: "dict"
+      description: "Ray集群的额外配置参数"
+      optional: true
+      example: 
+        logging_level: "info"
+        enable_gpu: false
+
+# 2. SPU设备初始化配置 (spu.init所需参数)
+spu_config:
+  description: "安全处理单元(SPU)设备配置参数"
+  schema:
+    enable_spu:
+      type: "bool"
+      description: "是否启用SPU设备，某些任务可能不需要SPU"
+      default: true
+      
+    runtime_config:
+      type: "dict"
+      description: "SPU运行时配置"
+      required_when_enabled: true
+      schema:
+        protocol:
+          type: "str"
+          description: "多方安全计算协议"
+          options: ["SEMI2K", "ABY3", "CHEETAH"]
+          example: "SEMI2K"
+          
+        field:
+          type: "str" 
+          description: "有限域配置"
+          options: ["FM64", "FM128"]
+          example: "FM128"
+          
+    link_desc:
+      type: "dict"
+      description: "SPU网络连接描述配置"
+      required_when_enabled: true
+      schema:
+        connect_retry_times:
+          type: "int"
+          description: "连接重试次数"
+          default: 60
+          
+        connect_retry_interval_ms:
+          type: "int"
+          description: "重试间隔(毫秒)"
+          default: 1000
+          
+        brpc_channel_protocol:
+          type: "str"
+          description: "BRPC通道协议"
+          default: "http"
+          options: ["http", "baidu_std", "hulu_pbrpc"]
+          
+        brpc_channel_connection_type:
+          type: "str"
+          description: "BRPC连接类型"
+          default: "pooled"
+          options: ["single", "pooled", "short"]
+          
+        recv_timeout_ms:
+          type: "int"
+          description: "接收超时时间(毫秒)"
+          default: 1200000
+          
+        http_timeout_ms:
+          type: "int"
+          description: "HTTP超时时间(毫秒)" 
+          default: 1200000
+
+# 3. HEU设备初始化配置 (heu.init所需参数)
+heu_config:
+  description: "同态加密单元(HEU)设备配置参数"
+  schema:
+    enable_heu:
+      type: "bool"
+      description: "是否启用HEU设备，某些任务可能不需要HEU"
+      default: true
+      
+    mode:
+      type: "str"
+      description: "同态加密模式"
+      options: ["PHEU", "FHEU"]
+      default: "PHEU"
+      example: "PHEU"
+      
+    schema:
+      type: "str"
+      description: "同态加密方案"
+      options: ["paillier", "ou", "ec_elgamal"]
+      default: "paillier"
+      example: "paillier"
+      
+    key_size:
+      type: "int"
+      description: "密钥长度(位)"
+      options: [1024, 2048, 3072, 4096]
+      default: 2048
+      example: 2048
+
+# 4. 任务特定配置 (根据不同任务类型变化)
+task_config:
+  description: "具体任务执行所需的参数配置"
+  schema:
+    task_type:
+      type: "str"
+      description: "任务类型标识"
+      required: true
+      examples: ["psi", "pir", "lr", "xgb", "nn"]
+      
+    domain:
+      type: "str"
+      description: "任务所属领域"
+      required: true
+      examples: ["data_prep", "ml.train", "ml.predict", "stats"]
+      
+    version:
+      type: "str"
+      description: "任务算法版本"
+      default: "1.0.0"
+      
+    # 输入数据配置
+    input_data:
+      type: "dict"
+      description: "输入数据配置"
+      required: true
+      schema:
+        input_ids:
+          type: "list[str]"
+          description: "输入数据标识符列表"
+          example: ["alice-table", "bob-table"]
+          
+        data_sources:
+          type: "dict"
+          description: "各参与方数据源配置映射"
+          example:
+            alice: 
+              source_id: "default-data-source"
+              data_path: "/data/alice"
+            bob:
+              source_id: "default-data-source"
+              data_path: "/data/bob"
+    
+    # 输出数据配置  
+    output_data:
+      type: "dict"
+      description: "输出数据配置"
+      required: true
+      schema:
+        output_ids:
+          type: "list[str]"
+          description: "输出数据标识符列表"
+          example: ["psi-output-0", "psi-output-1"]
+          
+        output_uris:
+          type: "list[str]"  
+          description: "输出数据URI路径列表"
+          example: ["psi-output-0", "psi-output-1"]
+    
+    # 算法特定参数 (根据task_type动态变化)
+    algorithm_params:
+      type: "dict"
+      description: "算法特定的执行参数，内容根据task_type变化"
+      required: true
+      
+      # PSI任务示例参数
+      psi_params_example:
+        input_keys:
+          alice_keys: ["id1"]
+          bob_keys: ["id2"]
+        protocol: "PROTOCOL_RR22"
+        sort_result: true
+        join_type: "inner_join"
+        receiver_parties: ["alice", "bob"]
+        allow_duplicated_keys: 
+          alice: true
+          bob: true
+        allow_empty_result: true
+        
+      # 机器学习训练任务示例参数
+      ml_train_params_example:
+        model_type: "logistic_regression"
+        features: ["feature1", "feature2", "feature3"]
+        label: "target"
+        training_params:
+          learning_rate: 0.01
+          max_iter: 100
+          reg_type: "l2"
+          reg_lambda: 0.1
+
+# 5. Worker端状态通信配置
+worker_status_config:
+  description: "Worker端任务状态通信配置，集成现有Redis监听系统"
+  schema:
+    task_request_id:
+      type: "str"
+      description: "任务请求唯一标识符"
+      required: true
+      
+    enable_status_reporting:
+      type: "bool"
+      description: "是否启用状态上报"
+      default: true
+      
+    status_report_interval:
+      type: "int"
+      description: "状态上报间隔(秒)"
+      default: 30
+      
+    redis_config:
+      type: "dict"
+      description: "Redis通信配置"
+      schema:
+        redis_url:
+          type: "str"
+          description: "Redis连接URL"
+          example: "redis://redis:6379/0"
+          
+        status_channel:
+          type: "str"  
+          description: "状态发布频道"
+          default: "task_status_events"
+          
+        status_queue:
+          type: "str"
+          description: "状态队列名称"
+          default: "task_status_queue"
+          
+        worker_container_id:
+          type: "str"
+          description: "Worker容器标识"
+          example: "secretflow-worker-1"
+
+# 完整函数调用示例
+function_call_example:
+  description: "SecretFlow Worker端任务执行函数的完整调用示例"
+  
+  # PSI任务示例
+  psi_task_example:
+    task_request_id: "uuid-12345-67890"
+    
+    sf_init_config:
+      parties: ["alice", "bob"]
+      address: "auto"
+      cross_silo_comm_backend: "brpc_link"
+      
+    spu_config:
+      enable_spu: true
+      runtime_config:
+        protocol: "SEMI2K"
+        field: "FM128"
+      link_desc:
+        connect_retry_times: 60
+        connect_retry_interval_ms: 1000
+        brpc_channel_protocol: "http"
+        brpc_channel_connection_type: "pooled"
+        recv_timeout_ms: 1200000
+        http_timeout_ms: 1200000
+        
+    heu_config:
+      enable_heu: true
+      mode: "PHEU"
+      schema: "paillier"
+      key_size: 2048
+      
+    task_config:
+      task_type: "psi"
+      domain: "data_prep"
+      version: "1.0.0"
+      input_data:
+        input_ids: ["alice-table", "bob-table"]
+        data_sources:
+          alice:
+            source_id: "default-data-source"
+            data_path: "/data/alice"
+          bob:
+            source_id: "default-data-source"
+            data_path: "/data/bob"
+      output_data:
+        output_ids: ["psi-output-0", "psi-output-1"]
+        output_uris: ["psi-output-0", "psi-output-1"]
+      algorithm_params:
+        input_keys:
+          alice_keys: ["id1"]
+          bob_keys: ["id2"]
+        protocol: "PROTOCOL_RR22"
+        sort_result: true
+        join_type: "inner_join"
+        receiver_parties: ["alice", "bob"]
+        allow_duplicated_keys:
+          alice: true
+          bob: true
+        allow_empty_result: true
+  
+  # 仅需要SPU的机器学习任务示例
+  ml_task_example:
+    task_request_id: "uuid-ml-11111"
+    
+    sf_init_config:
+      parties: ["alice", "bob", "charlie"]
+      address: "auto"
+      cross_silo_comm_backend: "brpc_link"
+      
+    spu_config:
+      enable_spu: true
+      runtime_config:
+        protocol: "ABY3"  # 三方协议
+        field: "FM128"
+      link_desc:
+        connect_retry_times: 60
+        connect_retry_interval_ms: 1000
+        brpc_channel_protocol: "http"
+        brpc_channel_connection_type: "pooled"
+        recv_timeout_ms: 1800000  # 30分钟，ML任务通常耗时更长
+        http_timeout_ms: 1800000
+        
+    heu_config:
+      enable_heu: false  # ML训练任务可能不需要HEU
+      
+    task_config:
+      task_type: "lr"
+      domain: "ml.train"
+      version: "1.0.0"
+      input_data:
+        input_ids: ["train-data-alice", "train-data-bob", "train-data-charlie"]
+        data_sources:
+          alice:
+            source_id: "alice-ml-source"
+            data_path: "/data/alice/ml"
+          bob:
+            source_id: "bob-ml-source"
+            data_path: "/data/bob/ml"
+          charlie:
+            source_id: "charlie-ml-source"
+            data_path: "/data/charlie/ml"
+      output_data:
+        output_ids: ["trained-model"]
+        output_uris: ["models/lr_model_v1"]
+      algorithm_params:
+        features: ["age", "income", "education"]
+        label: "credit_score"
+        training_params:
+          learning_rate: 0.01
+          max_iter: 100
+          reg_type: "l2"
+          reg_lambda: 0.1
+          batch_size: 1000
+
+# 参数验证规则
+validation_rules:
+  description: "输入参数的验证规则和约束"
+  
+  sf_init_validation:
+    - "parties列表不能为空，至少包含2个参与方"
+    - "parties中的参与方名称必须唯一"
+    - "address为'auto'时自动发现集群，否则必须是有效的Ray地址"
+    
+  spu_validation:
+    - "当enable_spu为true时，runtime_config和link_desc必须提供"
+    - "protocol必须与参与方数量匹配(SEMI2K适用2方，ABY3适用3方)"
+    - "超时时间应根据任务复杂度合理设置"
+    
+  heu_validation:
+    - "当enable_heu为true时，mode、schema、key_size必须提供"
+    - "key_size越大安全性越高但性能越低，需要平衡考虑"
+    
+  task_validation:
+    - "task_type必须是系统支持的任务类型"
+    - "input_ids和data_sources的参与方必须与sf_init_config.parties一致"
+    - "algorithm_params内容必须符合对应task_type的参数要求"

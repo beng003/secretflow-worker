@@ -9,7 +9,6 @@ Celery应用配置
 """
 
 import os
-import multiprocessing
 from celery import Celery
 
 from src.log import logger

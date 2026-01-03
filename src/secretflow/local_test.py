@@ -1,16 +1,15 @@
-#!/usr/bin/env python3
-"""
-简化版PSI单机测试
-专门为SecretFlow单机仿真模式设计
-"""
-
 from datetime import datetime
 from typing import Any, Dict
 
 # 使用项目统一的日志系统
-# from src.log import logger
+from src.log import logger
+
+# 使用任务基类
+from src.base import BaseTask
+from src.celery_app import celery_app
 
 
+@celery_app.task(base=BaseTask, name="tasks.secretflow.local_test.local_psi_test")
 def local_psi_test() -> Dict[str, Any]:
     """
     Hello World 测试任务
@@ -76,5 +75,5 @@ def local_psi_test() -> Dict[str, Any]:
     
     return result
 
-if __name__ == "__main__":
-    local_psi_test()
+
+

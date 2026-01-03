@@ -3,23 +3,31 @@ name = "secretflow-backend"
 version = "0.1.0"
 description = "SecretFlow隐私计算生产模式后端服务"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = "==3.10.16"
 dependencies = [
     "secretflow==1.12.0b0",
-    "celery[redis]>=5.3.0",
-    "redis>=4.5.0",
-    "pydantic==2.5.0",
-    "pydantic-settings==2.1.0",
-    "structlog==23.2.0",
-    "cryptography==41.0.7",
-    "kombu==5.3.4",
-    "billiard==4.2.0",
-    "python-jose[cryptography]==3.3.0",
-    "passlib[bcrypt]==1.7.4",
-    "flower==2.0.1",
-    "loguru>=0.7.0",
-    "python-dotenv>=1.0.0",
+    "celery[redis]",
+    "redis",
+    "pydantic",
+    "pydantic-settings",
+    "structlog",
+    "cryptography",
+    "kombu",
+    "billiard",
+    "python-jose[cryptography]",
+    "passlib[bcrypt]",
+    "flower",
+    "loguru",
+    "python-dotenv",
 ]
 
 [tool.uv]
 prerelease = "allow"
+
+[tool.uv.sources]
+sfl = { git = "https://github.com/secretflow/sfl.git", rev = "peicheng/fix_deps" }
+
+[dependency-groups]
+dev = [
+    "ruff>=0.14.10",
+]

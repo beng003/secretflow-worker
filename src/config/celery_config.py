@@ -251,7 +251,8 @@ class CeleryConfig:
             "worker_max_memory_per_child": self.worker_max_memory_per_child,
             "beat_schedule": self.beat_schedule,
             "include": self.include,
-            "broker_connection_retry_on_startup": True,
+            # "broker_connection_retry_on_startup": True,
+            "worker_redirect_stdouts": False,
         }
 
     def validate_config(self) -> bool:

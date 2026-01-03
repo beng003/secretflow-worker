@@ -29,7 +29,24 @@ def local_psi_test() -> Dict[str, Any]:
     print('The version of SecretFlow: {}'.format(sf.__version__))
     
     start_time = datetime.now()
-    sf.init(parties=['alice', 'bob'], address = "local")
+    
+    cluster_config ={
+        'parties': {
+            'alice': {
+                # replace with alice's real address.
+                'address': '127.0.0.1:7700',
+                'listen_addr': '0.0.0.0:7700'
+            },
+            'bob': {
+                # replace with bob's real address.
+                'address': '127.0.0.1:7800',
+                'listen_addr': '0.0.0.0:7800'
+            },
+        },
+        'self_party': 'alice'
+    }
+    
+    sf.init(address = "127.0.0.1:7701", cluster_config=cluster_config, ray_mode = False)
     
     print("SecretFlow initialized successfully")
         
@@ -53,7 +70,31 @@ def local_psi_test() -> Dict[str, Any]:
     print("Data prepared")
     
     alice, bob = sf.PYU('alice'), sf.PYU('bob')
-    spu = sf.SPU(sf.utils.testing.cluster_def(['alice', 'bob']))    
+    
+    import spu
+    cluster_def={
+        'nodes': [
+            {
+                'party': 'alice',
+                # Please choose an unused port.
+                'address': '127.0.0.1:7702',
+                'listen_addr': '0.0.0.0:7702'
+            },
+            {
+                'party': 'bob',
+                # Please choose an unused port.
+                'address': '127.0.0.1:7802',
+                'listen_addr': '0.0.0.0:7802'
+            },
+        ],
+        'runtime_config': {
+            'protocol': spu.ProtocolKind.SEMI2K,
+            'field': spu.FieldType.FM128,
+            'sigmoid_mode': spu.RuntimeConfig.SigmoidMode.SIGMOID_REAL,
+        }
+    }
+    
+    spu = sf.SPU(cluster_def=cluster_def)    
     
     print("About to run PSI")
     # 1. 单键隐私求交
