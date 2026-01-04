@@ -67,12 +67,12 @@ RUN groupadd -r secretflow && \
 # 切换到非 root 用户
 USER secretflow
 
-# 健康检查
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-    CMD python -c "import redis; import os; r=redis.Redis.from_url(os.getenv('REDIS_URL', 'redis://localhost:6379/0')); r.ping()" || exit 1
-
 # 暴露端口
 EXPOSE 9394
 
 # 设置启动命令
 CMD ["python", "-m", "src.worker"]
+
+# 健康检查
+HEALTHCHECK --interval=60s --timeout=30s --start-period=60s --retries=3 \
+    CMD celery -A src.celery_app call tasks.secretflow.health_check.health_check_task

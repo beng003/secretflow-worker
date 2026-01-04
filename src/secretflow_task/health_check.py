@@ -2,12 +2,12 @@ from datetime import datetime
 from typing import Any, Dict
 
 # 使用项目统一的日志系统
-from src.utils.log import logger
+from utils.log import logger
 
 # 使用任务基类
-from src.base import BaseTask
-from src.celery_app import celery_app
-from src.config.settings import settings
+from base import BaseTask
+from celery_app import celery_app
+from config.settings import settings
 
 
 @celery_app.task(base=BaseTask, name="tasks.secretflow.health_check.health_check_task")

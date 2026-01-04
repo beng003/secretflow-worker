@@ -12,7 +12,7 @@ from typing import Any
 from celery import Task
 
 # 使用项目统一的loguru日志系统，替代celery日志
-from src.utils.log import logger
+from utils.log import logger
 
 
 class BaseTask(Task, ABC):
@@ -230,6 +230,7 @@ class SecretFlowTask(BaseTask):
     SecretFlow任务基类
 
     专用于SecretFlow隐私计算任务，提供进程隔离和长时间运行支持
+    集成自动化状态上报功能
     """
 
     # SecretFlow任务默认配置
@@ -254,6 +255,27 @@ class SecretFlowTask(BaseTask):
                 "soft_time_limit": self.soft_time_limit,
             },
         )
+        
+        # 自动上报任务开始状态
+        self._publish_task_status(task_id, "RUNNING", {
+            "stage": "started",
+            "task_name": self.name,
+            "args_count": len(args),
+            "kwargs_count": len(kwargs),
+            "time_limit": self.time_limit
+        })
+
+    def on_success(self, retval: Any, task_id: str, args: tuple, kwargs: dict) -> None:
+        """SecretFlow任务成功完成处理"""
+        super().on_success(retval, task_id, args, kwargs)
+        
+        # 自动上报任务成功状态
+        self._publish_task_status(task_id, "SUCCESS", {
+            "stage": "completed",
+            "task_name": self.name,
+            "result_type": type(retval).__name__,
+            "execution_time": time.time() - self._start_time if self._start_time else 0
+        })
 
     def on_failure(
         self, exc: Exception, task_id: str, args: tuple, kwargs: dict, einfo
@@ -270,3 +292,27 @@ class SecretFlowTask(BaseTask):
                 "critical_failure": True,
             },
         )
+        
+        # 自动上报任务失败状态
+        self._publish_task_status(task_id, "FAILURE", {
+            "stage": "failed",
+            "task_name": self.name,
+            "error_type": type(exc).__name__,
+            "error_message": str(exc),
+            "execution_time": time.time() - self._start_time if self._start_time else 0
+        })
+
+    def _publish_task_status(self, task_id: str, status: str, data: dict) -> None:
+        """发布SecretFlow任务状态
+        
+        Args:
+            task_id: 任务ID
+            status: 任务状态
+            data: 状态相关数据
+        """
+        try:
+            from utils.status_notifier import _publish_status
+            _publish_status(task_id, status, data)
+        except Exception:
+            # 静默失败，确保状态上报不影响主任务
+            pass

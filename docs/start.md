@@ -42,6 +42,8 @@ celery -A src.celery_app beat --loglevel=info --scheduler django_celery_beat.sch
 celery -A src.celery_app call tasks.secretflow.hello.hello_task
 celery -A src.celery_app call tasks.secretflow.local_test.local_psi_test
 celery -A src.celery_app call tasks.secretflow.health_check.health_check_task
+
+export REDIS_URL="redis://localhost:26379/0" & celery -A src.celery_app call tasks.secretflow.health_check.health_check_task
 # 查看任务结果
 celery -A src.celery_app result <task_id>
 ```
@@ -55,9 +57,9 @@ uv export --format requirements-txt --output-file requirements.txt
 
 ```bash
 # 不使用缓存重新构建
-docker build --no-cache -t secretflow-work .
+docker build --no-cache -t secretflow-worker .
 # 指定构建上下文和Dockerfile位置
-docker build -f docker/Dockerfile -t secretflow-work .
+docker build -f docker/Dockerfile -t secretflow-worker .
 # 查看构建过程详细信息
-docker build -t secretflow-work . --progress=plain
+docker build -t secretflow-worker . --progress=plain
 ```

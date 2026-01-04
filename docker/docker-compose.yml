@@ -1,10 +1,10 @@
 services:
   # Redis 消息队列和结果后端
-  redis:
+  secretflow-redis-test:
     image: redis:7-alpine
     container_name: secretflow-redis
-    # ports:
-    #   - "6379:6379"
+    ports:
+      - "26379:6379"
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
@@ -17,26 +17,32 @@ services:
       timeout: 10s
       retries: 3
 
-  secretflow-worker:
-    # build: 
-    #   context: ..
-    #   dockerfile: Dockerfile
+  secretflow-worker-test:
+    build: 
+      context: ..
+      dockerfile: docker/Dockerfile
     image: secretflow-worker:latest
     container_name: secretflow-worker
     depends_on:
-      redis:
+      secretflow-redis-test:
         condition: service_healthy
     env_file:
-      - ../.env.secretflow
+      - ../.env.docker
     volumes:
       - alice_data:/app/data
       - alice_logs:/app/logs
       - /dev/shm:/dev/shm
     ports:
-      - "9394:8080"
+      - "8088:8088"
     networks:
       - secretflow-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "celery", "-A", "src.celery_app", "call", "tasks.secretflow.health_check.health_check_task"]
+      interval: 60s
+      timeout: 30s
+      retries: 3
+      start_period: 60s
     deploy:
       resources:
         limits:
@@ -56,4 +62,4 @@ networks:
     driver: bridge
     ipam:
       config:
-        - subnet: 172.20.0.0/16
+        - subnet: 172.25.0.0/16

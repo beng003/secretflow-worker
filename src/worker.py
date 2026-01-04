@@ -8,9 +8,9 @@ import os
 import sys
 import signal
 
-from src.utils.log import logger
-from src.celery_app import celery_app
-from src.config.settings import settings
+from utils.log import logger
+from celery_app import celery_app
+from config.settings import settings
 
 
 

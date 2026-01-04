@@ -98,11 +98,22 @@ def local_psi_test() -> Dict[str, Any]:
     
     print("About to run PSI")
     # 1. 单键隐私求交
-    input_path = {alice.party: f'{test_data_path}/alice.csv', bob.party: f'{test_data_path}/bob.csv'}
-    output_path = {alice.party: f'{test_data_path}/alice_psi.csv', bob.party: f'{test_data_path}/bob_psi.csv'}
-    spu.psi({alice.party:["uid"], bob.party: ["uid"]}, input_path, output_path, 'alice', {alice.party: True, bob.party: True}, disable_alignment=True)
-    
+    input_path = {
+        alice.party: f'{test_data_path}/alice.csv', 
+        bob.party: f'{test_data_path}/input.csv'
+    }
+    output_path = {
+        alice.party: f'{test_data_path}/alice_psi.csv', 
+        bob.party: f'{test_data_path}/output.csv'
+    }
+    sf.wait(spu.psi(
+        {alice.party:["uid"], bob.party:["id"]}, 
+        input_path, output_path, 'alice', 
+        {alice.party: True, bob.party: True}, 
+        disable_alignment=True,
+    ))
     print("spu psi completed")
+    sf.shutdown()
     
     # 4. result
     end_time = datetime.now()

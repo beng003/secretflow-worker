@@ -1694,7 +1694,7 @@ wheels = [
 ]
 
 [[package]]
-name = "secretflow-work"
+name = "secretflow-worker"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

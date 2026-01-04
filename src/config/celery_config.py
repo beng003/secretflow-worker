@@ -7,7 +7,7 @@ Celery配置模块
 
 from kombu import Exchange, Queue
 
-from src.config.settings import settings
+from config.settings import settings
 
 
 class CeleryConfig:
@@ -63,7 +63,12 @@ class CeleryConfig:
     @property
     def include(self) -> list[str]:
         """任务模块包含路径"""
-        return ["src.secretflow"]
+        return [
+            "secretflow_task.celery_tasks",
+            "secretflow_task.hello",
+            "secretflow_task.local_test",
+            "secretflow_task.health_check"
+        ]
 
     @property
     def redis_config(self) -> dict:
@@ -99,9 +104,7 @@ class CeleryConfig:
         }
         
         # 任务模块包含路径
-        include_modules = [
-            "src.secretflow",
-        ]
+        include_modules = self.include
         
         return {
             # Redis连接配置

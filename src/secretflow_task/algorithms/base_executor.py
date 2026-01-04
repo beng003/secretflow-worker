@@ -61,5 +61,23 @@ class BaseTaskExecutor(ABC):
             progress: 进度百分比 (0.0-1.0)
             message: 进度描述消息
         """
-        # TODO: 实现进度发布逻辑
-        pass
+        # 验证进度值范围
+        progress = max(0.0, min(1.0, progress))
+        
+        try:
+            from utils.status_notifier import _publish_status
+            _publish_status(
+                self.task_request_id,
+                "RUNNING",
+                {
+                    "stage": "progress_update",
+                    "progress": progress,
+                    "progress_percent": f"{progress * 100:.1f}%",
+                    "message": message,
+                    "task_type": self.task_config.get("task_type", "unknown"),
+                    "algorithm_step": message if message else f"进度 {progress * 100:.1f}%"
+                }
+            )
+        except Exception:
+            # 静默失败，确保进度发布不影响主算法执行
+            pass

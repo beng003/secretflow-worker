@@ -3,7 +3,7 @@ import sys
 
 from loguru import logger as loguru_logger
 
-from src.config.settings import settings
+from config.settings import settings
 
 
 class LoggingConfig:

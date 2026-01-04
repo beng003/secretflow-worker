@@ -18,7 +18,7 @@ class Settings:
         # 加载SecretFlow专用环境变量文件
         env_file = PROJECT_ROOT / ".env.secretflow"
         if env_file.exists():
-            load_dotenv(env_file)
+            load_dotenv(env_file, override=False)
         
         # 环境配置
         self.debug = os.getenv("DEBUG", "false").lower() == "true"

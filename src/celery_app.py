@@ -11,8 +11,8 @@ Celery应用配置
 import os
 from celery import Celery
 
-from src.utils.log import logger
-from .config.celery_config import get_celery_config
+from utils.log import logger
+from config.celery_config import get_celery_config
 
 # 获取配置实例
 celery_config = get_celery_config()
