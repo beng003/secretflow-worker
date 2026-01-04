@@ -44,6 +44,45 @@ celery -A src.celery_app call tasks.secretflow.local_test.local_psi_test
 celery -A src.celery_app call tasks.secretflow.health_check.health_check_task
 
 export REDIS_URL="redis://localhost:26379/0" & celery -A src.celery_app call tasks.secretflow.health_check.health_check_task
+
+
+uv run celery -A src.celery_app call tasks.secretflow.execute_task --queue=secretflow_queue --args='[
+    "psi-cli-test-001",
+    {
+        "sf_init_config": {
+            "parties": ["alice", "bob"],
+            "address": "local"
+        },
+        "spu_config": {
+            "cluster_def": {
+                "nodes": [
+                    {"party": "alice", "address": "127.0.0.1:12345"},
+                    {"party": "bob", "address": "127.0.0.1:12346"}
+                ],
+                "runtime_config": {
+                    "protocol": "SEMI2K",
+                    "field": "FM128"
+                }
+            }
+        },
+        "task_config": {
+            "task_type": "psi",
+            "keys": "uid",
+            "input_paths": {
+                "alice": "/disc/home/beng003/work/secretflow_test/tests/data/alice.csv",
+                "bob": "/disc/home/beng003/work/secretflow_test/tests/data/bob.csv"
+            },
+            "output_paths": {
+                "alice": "/disc/home/beng003/work/secretflow_test/tests/data/alice_psi_cli_out.csv",
+                "bob": "/disc/home/beng003/work/secretflow_test/tests/data/bob_psi_cli_out.csv"
+            },
+            "receiver_party": "alice",
+            "protocol": "KKRT_PSI_2PC",
+            "sort": true
+        }
+    }
+]'
+
 # 查看任务结果
 celery -A src.celery_app result <task_id>
 ```
