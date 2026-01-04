@@ -41,7 +41,23 @@ celery -A src.celery_app beat --loglevel=info --scheduler django_celery_beat.sch
 # 发起 hello 任务
 celery -A src.celery_app call tasks.secretflow.hello.hello_task
 celery -A src.celery_app call tasks.secretflow.local_test.local_psi_test
-
+celery -A src.celery_app call tasks.secretflow.health_check.health_check_task
 # 查看任务结果
 celery -A src.celery_app result <task_id>
+```
+
+### 3. requirements.txt 生成
+```bash
+uv export --format requirements-txt --output-file requirements.txt
+```
+
+### 4. Dockerfile
+
+```bash
+# 不使用缓存重新构建
+docker build --no-cache -t secretflow-work .
+# 指定构建上下文和Dockerfile位置
+docker build -f docker/Dockerfile -t secretflow-work .
+# 查看构建过程详细信息
+docker build -t secretflow-work . --progress=plain
 ```

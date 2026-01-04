@@ -33,9 +33,9 @@ services:
       - alice_data:/app/data
       - alice_logs:/app/logs
       - /dev/shm:/dev/shm
-    ports:
-      - "9394:9394"
-      - "10001:10001"
+    # ports:
+    #   - "9394:9394"
+    #   - "10001:10001"
     networks:
       - secretflow-network
     restart: unless-stopped

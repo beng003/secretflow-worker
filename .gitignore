@@ -3,6 +3,7 @@ __pycache__/
 *.py[cod]
 .ruff_*
 *$py.class
+.venv/
 
 # C extensions
 *.so

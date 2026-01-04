@@ -8,9 +8,6 @@ import os
 import sys
 import signal
 
-# 添加项目根目录到路径
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from src.utils.log import logger
 from src.celery_app import celery_app
 from src.config.settings import settings
@@ -39,14 +36,12 @@ def validate_environment():
     # 检查Redis连接
     try:
         import redis
-        r = redis.Redis(
-            host=settings.redis_host,
-            port=settings.redis_port,
-            password=settings.redis_password,
-            db=settings.redis_db,
-            socket_timeout=5
-        )
+        
+        r = redis.from_url(settings.redis_url, encoding="utf-8", decode_responses=True)
         r.ping()
+        r.close()
+        r.connection_pool.disconnect()
+        
         logger.info("Redis连接正常")
     except Exception as e:
         logger.warning(f"Redis连接检查失败: {e}")

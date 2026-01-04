@@ -24,34 +24,15 @@ class CeleryConfig:
 
     @property
     def broker_url(self) -> str:
-        """Redis broker URL，直接使用settings.REDIS_URL"""
+        """Redis broker URL，直接使用settings.redis_url"""
         return self.settings.redis_url
 
     @property
     def result_backend(self) -> str:
-        """Redis结果后端URL，直接使用settings.REDIS_URL"""
+        """Redis结果后端URL，直接使用settings.redis_url"""
         return self.settings.redis_url
 
-    @property
-    def task_serializer(self) -> str:
-        """任务序列化格式"""
-        return "json"
-
-    @property
-    def result_serializer(self) -> str:
-        """结果序列化格式"""
-        return "json"
-
-    @property
-    def accept_content(self) -> list[str]:
-        """接受的内容类型"""
-        return ["json"]
-
-    @property
-    def timezone(self) -> str:
-        """时区配置，独立于数据库配置"""
-        # 从环境变量或默认值获取时区，不再依赖TORTOISE_ORM
-        return getattr(self.settings, 'TIMEZONE', 'Asia/Shanghai')
+    # 序列化和时区配置已移至get_celery_settings方法中直接使用
 
     @property
     def task_queues(self) -> tuple[Queue, ...]:
@@ -75,144 +56,21 @@ class CeleryConfig:
         }
 
     @property
-    def task_default_queue(self) -> str:
-        """默认任务队列"""
-        return "default"
-
-    @property
-    def task_default_exchange(self) -> str:
-        """默认任务交换器"""
-        return "default"
-
-    @property
-    def task_default_routing_key(self) -> str:
-        """默认路由键"""
-        return "default"
-
-    @property
-    def task_acks_late(self) -> bool:
-        """延迟确认，确保任务执行完成才确认"""
-        return True
-
-    @property
-    def task_reject_on_worker_lost(self) -> bool:
-        """Worker中断时任务重新排队"""
-        return True
-
-    @property
-    def task_soft_time_limit(self) -> int:
-        """软超时时间（秒）"""
-        return 3600  # 1小时
-
-    @property
-    def task_time_limit(self) -> int:
-        """硬超时时间（秒）"""
-        return 7200  # 2小时
-
-    @property
-    def result_expires(self) -> int:
-        """结果过期时间（秒）"""
-        return 86400  # 24小时
-
-    @property
-    def task_track_started(self) -> bool:
-        """跟踪任务开始状态"""
-        return True
-
-    @property
-    def worker_log_level(self) -> str:
-        """Worker日志级别"""
-        return "INFO"
-
-    @property
-    def worker_disable_rate_limits(self) -> bool:
-        """禁用速率限制"""
-        return True
-
-    @property
-    def worker_send_task_events(self) -> bool:
-        """发送任务事件"""
-        return False
-
-    @property
-    def worker_hijack_root_logger(self) -> bool:
-        """不劫持根日志器，保持与现有loguru日志系统兼容"""
-        return False
-
-    @property
-    def worker_log_format(self) -> str:
-        """Worker日志格式，与现有日志系统保持一致"""
-        return "[%(asctime)s: %(levelname)s/%(processName)s] %(message)s"
-
-    @property
-    def worker_concurrency(self) -> int:
-        """Worker并发度，从settings读取"""
-        return self.settings.CELERY_WORKER_CONCURRENCY
-
-    @property
-    def worker_pool(self) -> str:
-        """Worker进程池类型，从settings读取"""
-        return self.settings.CELERY_WORKER_POOL
-
-    @property
-    def worker_autoscaler(self) -> str:
-        """Worker自动扩展配置，格式: max_concurrency,min_concurrency"""
-        max_workers = self.settings.CELERY_WORKER_AUTOSCALE_MAX
-        min_workers = self.settings.CELERY_WORKER_AUTOSCALE_MIN
-        return f"{max_workers},{min_workers}"
-
-    @property
-    def worker_prefetch_multiplier(self) -> int:
-        """Worker预取倍数，控制每个worker进程预取的任务数量"""
-        return 1  # 设置为1以获得更好的负载均衡
-
-    @property
-    def worker_max_tasks_per_child(self) -> int:
-        """每个worker子进程处理的最大任务数，超过后重启进程防止内存泄漏"""
-        return 1000
-
-    @property
-    def worker_max_memory_per_child(self) -> int:
-        """每个worker子进程的最大内存使用量(KB)，超过后重启进程"""
-        return 200000  # 200MB
-
-    @property
     def beat_schedule(self) -> dict[str, dict]:
         """定时任务调度配置"""
-        # 暂时返回空的定时任务配置，避免引用不存在的任务
-        # TODO: 当实际任务模块创建后，重新启用相应的定时任务
-        return {}
-
+        return {}  # 暂时为空
+    
     @property
     def include(self) -> list[str]:
         """任务模块包含路径"""
-        return [
-            # SecretFlow任务模块 
-            "src.secretflow",
-            # todo: 其他任务模块当需要时添加
-            # "tasks.web.certificate",
-            # "tasks.web.diagnostics", 
-            # "tasks.web.system",
-        ]
-
-    # database_config已移除 - Celery任务层不再需要数据库配置
+        return ["src.secretflow"]
 
     @property
     def redis_config(self) -> dict:
         """Redis配置信息"""
         return {
             "url": self.settings.redis_url,
-            "cache_ttl": self.settings.CACHE_TTL,
-        }
-
-    @property
-    def log_config(self) -> dict:
-        """日志配置信息"""
-        return {
-            "level": self.worker_log_level,
-            "format": self.worker_log_format,
-            "hijack_root_logger": self.worker_hijack_root_logger,
-            "logs_root": self.settings.LOGS_ROOT,
+            "cache_ttl": self.settings.cache_ttl,
         }
 
     def get_celery_settings(self) -> dict:
@@ -222,37 +80,73 @@ class CeleryConfig:
         Returns:
             dict: 完整的Celery配置参数
         """
+        from kombu import Exchange, Queue
+        
+        # 任务队列定义
+        default_exchange = Exchange("default", type="direct")
+        secretflow_exchange = Exchange("secretflow", type="direct")
+        web_exchange = Exchange("web", type="direct")
+        
+        task_queues = (
+            Queue("default", default_exchange, routing_key="default"),
+            Queue("secretflow_queue", secretflow_exchange, routing_key="secretflow"),
+            Queue("web_queue", web_exchange, routing_key="web"),
+        )
+        
+        # 任务路由规则
+        task_routes = {
+            "tasks.secretflow.*": {"queue": "secretflow_queue"},
+        }
+        
+        # 任务模块包含路径
+        include_modules = [
+            "src.secretflow",
+        ]
+        
         return {
-            "broker_url": self.broker_url,
-            "result_backend": self.result_backend,
-            "task_serializer": self.task_serializer,
-            "result_serializer": self.result_serializer,
-            "accept_content": self.accept_content,
-            "timezone": self.timezone,
-            "task_queues": self.task_queues,
-            "task_routes": self.task_routes,
-            "task_default_queue": self.task_default_queue,
-            "task_default_exchange": self.task_default_exchange,
-            "task_default_routing_key": self.task_default_routing_key,
-            "task_acks_late": self.task_acks_late,
-            "task_reject_on_worker_lost": self.task_reject_on_worker_lost,
-            "task_soft_time_limit": self.task_soft_time_limit,
-            "task_time_limit": self.task_time_limit,
-            "result_expires": self.result_expires,
-            "task_track_started": self.task_track_started,
-            "worker_log_level": self.worker_log_level,
-            "worker_hijack_root_logger": self.worker_hijack_root_logger,
-            "worker_log_format": self.worker_log_format,
-            # Worker 并发度和性能配置
-            "worker_concurrency": self.worker_concurrency,
-            "worker_pool": self.worker_pool,
-            "worker_prefetch_multiplier": self.worker_prefetch_multiplier,
-            "worker_max_tasks_per_child": self.worker_max_tasks_per_child,
-            "worker_max_memory_per_child": self.worker_max_memory_per_child,
-            "beat_schedule": self.beat_schedule,
-            "include": self.include,
-            # "broker_connection_retry_on_startup": True,
+            # Redis连接配置
+            "broker_url": self.settings.redis_url,
+            "result_backend": self.settings.redis_url,
+            
+            # 序列化配置
+            "task_serializer": self.settings.task_serializer,
+            "result_serializer": self.settings.result_serializer,
+            "accept_content": self.settings.accept_content,
+            
+            # 时区配置
+            "timezone": self.settings.timezone,
+            
+            # 队列和路由配置
+            "task_queues": task_queues,
+            "task_routes": task_routes,
+            "task_default_queue": self.settings.task_default_queue,
+            "task_default_exchange": self.settings.task_default_exchange,
+            "task_default_routing_key": self.settings.task_default_routing_key,
+            
+            # 任务行为配置
+            "task_acks_late": self.settings.task_acks_late,
+            "task_reject_on_worker_lost": self.settings.task_reject_on_worker_lost,
+            "task_soft_time_limit": self.settings.task_soft_time_limit,
+            "task_time_limit": self.settings.task_time_limit,
+            "result_expires": self.settings.result_expires,
+            "task_track_started": self.settings.task_track_started,
+            
+            # Worker配置
+            "worker_log_level": self.settings.worker_loglevel,
+            "worker_hijack_root_logger": self.settings.worker_hijack_root_logger,
+            "worker_log_format": self.settings.worker_log_format,
+            "worker_concurrency": self.settings.celery_worker_concurrency,
+            "worker_pool": self.settings.celery_worker_pool,
+            "worker_prefetch_multiplier": self.settings.worker_prefetch_multiplier,
+            "worker_max_tasks_per_child": self.settings.worker_max_tasks_per_child,
+            "worker_max_memory_per_child": self.settings.worker_max_memory_per_child,
+            "worker_disable_rate_limits": self.settings.worker_disable_rate_limits,
+            "worker_send_task_events": self.settings.worker_send_task_events,
             "worker_redirect_stdouts": False,
+            
+            # 定时任务和模块包含
+            "beat_schedule": {},  # 暂时为空
+            "include": include_modules,
         }
 
     def validate_config(self) -> bool:

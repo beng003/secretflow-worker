@@ -1,5 +1,5 @@
 [project]
-name = "secretflow-backend"
+name = "secretflow-work"
 version = "0.1.0"
 description = "SecretFlow隐私计算生产模式后端服务"
 readme = "README.md"
