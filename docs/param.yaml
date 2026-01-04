@@ -9,32 +9,145 @@ sf_init_config:
   description: "SecretFlow集群初始化所需的核心参数"
   schema:
     parties:
-      type: "list[str]"
-      description: "参与计算的所有参与方标识列表"
+      type: "list[str] | str"
+      description: "参与计算的所有参与方标识列表，可以是字符串或字符串列表"
       example: ["alice", "bob"]
-      required: true
+      required: false
+      default: null
+      
+    ray_mode:
+      type: "bool"
+      description: "是否启用Ray模式进行分布式计算"
+      default: true
+      example: true
       
     address:
       type: "str"  
-      description: "Ray集群地址，通常设为'auto'进行自动发现"
-      default: "auto"
-      example: "auto"
-      
-    cross_silo_comm_backend:
-      type: "str"
-      description: "跨数据孤岛通信后端协议"
-      default: "brpc_link"
-      options: ["brpc_link", "grpc", "http"]
+      description: "Ray集群地址，None时自动启动本地Ray集群"
+      default: null
+      example: "127.0.0.1:10001"
+      optional: true
       
     cluster_config:
       type: "dict"
       description: "Ray集群的额外配置参数"
+      default: null
       optional: true
       example: 
         logging_level: "info"
         enable_gpu: false
-
-    # 等其他集群相关配置
+        
+    num_cpus:
+      type: "int"
+      description: "分配给Ray集群的CPU核心数"
+      default: null
+      optional: true
+      example: 8
+      
+    num_gpus:
+      type: "int" 
+      description: "分配给Ray集群的GPU设备数"
+      default: null
+      optional: true
+      example: 0
+      
+    log_to_driver:
+      type: "bool"
+      description: "是否将日志输出到驱动程序"
+      default: true
+      example: true
+      
+    omp_num_threads:
+      type: "int"
+      description: "OpenMP线程数配置"
+      default: null
+      optional: true
+      example: 4
+      
+    logging_level:
+      type: "str"
+      description: "日志记录级别"
+      default: "info"
+      options: ["debug", "info", "warning", "error", "critical"]
+      example: "info"
+      
+    job_name:
+      type: "str"
+      description: "Ray作业名称标识"
+      default: null
+      optional: true
+      example: "secretflow_job_001"
+      
+    cross_silo_comm_backend:
+      type: "str"
+      description: "跨数据孤岛通信后端协议"
+      default: "grpc"
+      options: ["grpc", "brpc_link", "http"]
+      example: "grpc"
+      
+    cross_silo_comm_options:
+      type: "dict"
+      description: "跨孤岛通信的额外选项配置"
+      default: null
+      optional: true
+      example:
+        timeout_ms: 30000
+        max_retry_times: 3
+        
+    enable_waiting_for_other_parties_ready:
+      type: "bool"
+      description: "是否等待其他参与方就绪后再开始计算"
+      default: true
+      example: true
+      
+    tls_config:
+      type: "dict"
+      description: "TLS安全通信配置，键为参与方名称"
+      default: null
+      optional: true
+      example:
+        alice:
+          cert_path: "/path/to/alice.crt"
+          key_path: "/path/to/alice.key" 
+          ca_cert_path: "/path/to/ca.crt"
+        bob:
+          cert_path: "/path/to/bob.crt"
+          key_path: "/path/to/bob.key"
+          ca_cert_path: "/path/to/ca.crt"
+          
+    auth_manager_config:
+      type: "dict"
+      description: "认证管理器配置"
+      default: null
+      optional: true
+      example:
+        auth_method: "mtls"
+        auth_timeout: 10
+        
+    party_key_pair:
+      type: "dict"
+      description: "参与方密钥对配置，键为参与方名称"
+      default: null
+      optional: true
+      example:
+        alice:
+          public_key_path: "/path/to/alice_public.pem"
+          private_key_path: "/path/to/alice_private.pem"
+        bob:
+          public_key_path: "/path/to/bob_public.pem" 
+          private_key_path: "/path/to/bob_private.pem"
+          
+    tee_simulation:
+      type: "bool"
+      description: "是否启用可信执行环境(TEE)仿真模式"
+      default: false
+      example: false
+      
+    debug_mode:
+      type: "bool"
+      description: "是否启用调试模式，会输出更详细的调试信息"
+      default: false
+      example: false
 
 # 2. SPU设备初始化配置 (spu.init所需参数)
 spu_config:
@@ -264,8 +377,23 @@ function_call_example:
     
     sf_init_config:
       parties: ["alice", "bob"]
-      address: "auto"
-      cross_silo_comm_backend: "brpc_link"
+      ray_mode: true
+      address: "127.0.0.1:10001"
+      cluster_config: null
+      num_cpus: 4
+      num_gpus: 0
+      log_to_driver: true
+      omp_num_threads: null
+      logging_level: "info"
+      job_name: "psi_task_001"
+      cross_silo_comm_backend: "grpc"
+      cross_silo_comm_options: null
+      enable_waiting_for_other_parties_ready: true
+      tls_config: null
+      auth_manager_config: null
+      party_key_pair: null
+      tee_simulation: false
+      debug_mode: false
       
     spu_config:
       enable_spu: true
@@ -319,8 +447,27 @@ function_call_example:
     
     sf_init_config:
       parties: ["alice", "bob", "charlie"]
-      address: "auto"
-      cross_silo_comm_backend: "brpc_link"
+      ray_mode: true
+      address: "127.0.0.1:10001"
+      cluster_config:
+        logging_level: "info"
+        enable_gpu: false
+      num_cpus: 8
+      num_gpus: 0
+      log_to_driver: true
+      omp_num_threads: 4
+      logging_level: "info"
+      job_name: "ml_train_task_001"
+      cross_silo_comm_backend: "grpc"
+      cross_silo_comm_options:
+        timeout_ms: 60000
+        max_retry_times: 5
+      enable_waiting_for_other_parties_ready: true
+      tls_config: null
+      auth_manager_config: null
+      party_key_pair: null
+      tee_simulation: false
+      debug_mode: false
       
     spu_config:
       enable_spu: true
@@ -371,9 +518,15 @@ validation_rules:
   description: "输入参数的验证规则和约束"
   
   sf_init_validation:
-    - "parties列表不能为空，至少包含2个参与方"
-    - "parties中的参与方名称必须唯一"
-    - "address为'auto'时自动发现集群，否则必须是有效的Ray地址"
+    - "parties可以为null、字符串或字符串列表，如果提供则参与方名称必须唯一"
+    - "ray_mode为false时将使用本地模式，不启动Ray集群"
+    - "address为null时自动启动本地Ray集群，否则必须是有效的Ray地址格式(如127.0.0.1:10001)"
+    - "num_cpus和num_gpus应根据实际硬件资源合理设置，避免超分配"
+    - "logging_level必须是有效的日志级别：debug, info, warning, error, critical"
+    - "cross_silo_comm_backend应根据网络环境选择：grpc适合一般场景，brpc_link适合高性能场景"
+    - "tls_config启用时，所有参与方都必须提供相应的证书文件路径"
+    - "party_key_pair启用时，必须为每个参与方提供公钥和私钥文件路径"
+    - "debug_mode仅在开发测试环境使用，生产环境应设为false"
     
   spu_validation:
     - "当enable_spu为true时，runtime_config和link_desc必须提供"
