@@ -11,6 +11,7 @@ import logging
 
 from secretflow_task.task_dispatcher import TaskDispatcher
 from secretflow.device import SPU, PYU
+from secretflow import reveal
 
 logger = logging.getLogger(__name__)
 
@@ -204,7 +205,7 @@ def execute_psi(devices: Dict[str, SPU | PYU], task_config: Dict[str, Any]) -> D
         intersection_count = 0
         receiver_output_path = output_paths.get(receiver)
         if receiver_output_path and os.path.exists(receiver_output_path):
-            intersection_count = _count_csv_lines(receiver_output_path)
+            intersection_count = reveal(devices[receiver](_count_csv_lines)(receiver_output_path))
             logger.info(f"交集数量: {intersection_count}")
         else:
             logger.warning(f"接收方输出文件不存在: {receiver_output_path}")

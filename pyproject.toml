@@ -40,3 +40,6 @@ dev = [
 addopts = "--ignore=tests/no_pytest"
 testpaths = ["tests"]
 norecursedirs = ["tests/no_pytest"]
+filterwarnings = [
+    "ignore:os.fork\\(\\) was called:RuntimeWarning"
+]

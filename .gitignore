@@ -4,7 +4,8 @@ __pycache__/
 .ruff_*
 *$py.class
 .venv/
-
+.vscode/
+*BeaverCache*/
 # C extensions
 *.so
 
