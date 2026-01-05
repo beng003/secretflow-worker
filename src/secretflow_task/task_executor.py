@@ -8,11 +8,10 @@ SecretFlow任务执行器主模块
 import time
 from typing import Dict, Any, Optional
 from datetime import datetime
-from contextlib import contextmanager
 
 from secretflow_task.cluster_initializer import SecretFlowClusterInitializer
 from secretflow_task.device_manager import DeviceManager
-from config.task_registry import get_algorithm_factory
+from secretflow_task.task_dispatcher import TaskDispatcher
 from utils.log import logger
 from utils.status_notifier import _publish_status
 from utils.exceptions import (
@@ -20,45 +19,6 @@ from utils.exceptions import (
     DeviceConfigError,
     AlgorithmError
 )
-
-
-@contextmanager
-def _managed_execution_context(
-    task_request_id: str,
-    cluster_initializer: SecretFlowClusterInitializer,
-    device_manager: DeviceManager
-):
-    """管理SecretFlow执行上下文
-    
-    自动处理资源清理，确保即使发生异常也能正确清理资源。
-    
-    Args:
-        task_request_id: 任务请求ID
-        cluster_initializer: 集群初始化器
-        device_manager: 设备管理器
-    """
-    try:
-        yield
-    finally:
-        # 清理资源
-        try:
-            logger.info(f"开始清理任务资源，task_id={task_request_id}")
-            
-            # 清理设备
-            if device_manager:
-                device_manager.cleanup_devices()
-                logger.info("设备资源清理完成")
-            
-            # 关闭集群
-            if cluster_initializer:
-                cluster_initializer.shutdown_cluster()
-                logger.info("集群关闭完成")
-            
-            logger.info(f"任务资源清理完成，task_id={task_request_id}")
-            
-        except Exception as e:
-            # 资源清理失败不影响主流程，但需记录
-            logger.error(f"资源清理失败: {e}", exc_info=True)
 
 
 def _collect_performance_metrics(
@@ -169,7 +129,8 @@ def execute_secretflow_task(
         _publish_status(task_request_id, "RUNNING", {
             "stage": "task_started",
             "task_type": task_config.get('task_type'),
-            "started_at": datetime.now().isoformat()
+            "started_at": datetime.now().isoformat(),
+            "progress": 0.0
         })
         
         # ========================================
@@ -177,6 +138,11 @@ def execute_secretflow_task(
         # ========================================
         logger.info("\n[1/4] 初始化SecretFlow集群...")
         cluster_init_start = time.time()
+        
+        _publish_status(task_request_id, "RUNNING", {
+            "stage": "cluster_init",
+            "progress": 0.1
+        })
         
         cluster_initializer = SecretFlowClusterInitializer()
         if not cluster_initializer.initialize_cluster(sf_init_config):
@@ -187,7 +153,8 @@ def execute_secretflow_task(
         
         _publish_status(task_request_id, "RUNNING", {
             "stage": "cluster_initialized",
-            "cluster_init_time": cluster_init_time
+            "cluster_init_time": cluster_init_time,
+            "progress": 0.2
         })
         
         # ========================================
@@ -195,6 +162,11 @@ def execute_secretflow_task(
         # ========================================
         logger.info("\n[2/4] 初始化计算设备...")
         device_init_start = time.time()
+        
+        _publish_status(task_request_id, "RUNNING", {
+            "stage": "device_creation",
+            "progress": 0.3
+        })
         
         device_manager = DeviceManager.get_instance()
         
@@ -217,7 +189,8 @@ def execute_secretflow_task(
         _publish_status(task_request_id, "RUNNING", {
             "stage": "devices_initialized",
             "device_init_time": device_init_time,
-            "initialized_devices": list(devices.keys())
+            "initialized_devices": list(devices.keys()),
+            "progress": 0.4
         })
         
         # ========================================
@@ -226,28 +199,26 @@ def execute_secretflow_task(
         logger.info("\n[3/4] 执行算法任务...")
         algorithm_exec_start = time.time()
         
-        # 使用算法工厂创建执行器
-        factory = get_algorithm_factory()
         task_type = task_config.get('task_type')
         
         if not task_type:
             raise AlgorithmError("任务配置中缺少task_type字段")
         
-        logger.info(f"  创建算法执行器: {task_type}")
-        executor = factory.create_executor(
-            task_type=task_type,
-            task_request_id=task_request_id,
-            task_config=task_config,
-            validate_compatibility=True
-        )
+        logger.info(f"  任务类型: {task_type}")
         
-        # 执行算法
-        logger.info(f"  开始执行算法: {task_type}")
-        algorithm_result = executor.execute()
+        _publish_status(task_request_id, "RUNNING", {
+            "stage": "task_execution",
+            "task_type": task_type,
+            "progress": 0.5
+        })
+        
+        # 使用TaskDispatcher分发任务
+        logger.info(f"  开始执行任务: {task_type}")
+        algorithm_result = TaskDispatcher.dispatch(task_type, devices, task_config)
         
         algorithm_exec_time = time.time() - algorithm_exec_start
         logger.info(
-            f"  ✓ 算法执行完成，耗时: {algorithm_exec_time:.2f}秒"
+            f"  ✓ 任务执行完成，耗时: {algorithm_exec_time:.2f}秒"
         )
         
         # ========================================
@@ -291,8 +262,10 @@ def execute_secretflow_task(
         # 发送任务成功状态
         _publish_status(task_request_id, "SUCCESS", {
             "stage": "task_completed",
-            "result": final_result,
-            "completed_at": datetime.now().isoformat()
+            "result": algorithm_result,
+            "performance_metrics": performance_metrics,
+            "completed_at": datetime.now().isoformat(),
+            "progress": 1.0
         })
         
         logger.info(
@@ -336,6 +309,22 @@ def execute_secretflow_task(
         raise
         
     finally:
-        # 使用上下文管理器进行资源清理
-        with _managed_execution_context(task_request_id, cluster_initializer, device_manager):
-            pass
+        # 资源清理
+        try:
+            logger.info(f"开始清理任务资源，task_id={task_request_id}")
+            
+            # 清理设备
+            if device_manager:
+                device_manager.cleanup_devices()
+                logger.info("设备资源清理完成")
+            
+            # 关闭集群
+            if cluster_initializer:
+                cluster_initializer.shutdown_cluster()
+                logger.info("集群关闭完成")
+            
+            logger.info(f"任务资源清理完成，task_id={task_request_id}")
+            
+        except Exception as e:
+            # 资源清理失败不影响主流程，但需记录
+            logger.error(f"资源清理失败: {e}", exc_info=True)

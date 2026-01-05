@@ -211,8 +211,9 @@ def execute_secretflow_celery_task(
     - 自动重试
     - 执行监控
     - 状态追踪
+    # note: 任务执行参数
     
-    Args:
+    Args: 
         self: Celery任务实例（bind=True时自动传入）
         task_request_id: 任务请求唯一标识符
         task_params: 任务参数字典，包含：
