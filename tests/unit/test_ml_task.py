@@ -21,7 +21,7 @@ from secretflow_task.task_dispatcher import TaskDispatcher
 
 # 测试数据路径
 TEST_DATA_DIR = str(Path(__file__).parent.parent / "data")
-TEST_MODEL_DIR = str(Path(__file__).parent.parent / "models")
+TEST_MODELS_DIR = str(Path(__file__).parent.parent / "models")
 
 
 @pytest.fixture(scope="module")
@@ -34,7 +34,7 @@ def setup_secretflow():
     
     # 准备测试数据目录
     os.makedirs(TEST_DATA_DIR, exist_ok=True)
-    os.makedirs(TEST_MODEL_DIR, exist_ok=True)
+    os.makedirs(TEST_MODELS_DIR, exist_ok=True)
     
     # 生成二分类数据集
     np.random.seed(42)
@@ -100,6 +100,33 @@ def real_devices(setup_secretflow):
     return devices
 
 
+@pytest.fixture(scope="module")
+def setup_devices(setup_secretflow):
+    """创建真实的SecretFlow设备和测试数据路径"""
+    alice = sf.PYU('alice')
+    bob = sf.PYU('bob')
+    spu = sf.SPU(sf.utils.testing.cluster_def(['alice', 'bob']))
+    
+    devices = {
+        'alice': alice,
+        'bob': bob,
+        'spu': spu,
+    }
+    
+    alice_path = f'{TEST_DATA_DIR}/alice_train.csv'
+    bob_path = f'{TEST_DATA_DIR}/bob_train.csv'
+    
+    return devices, alice_path, bob_path
+
+
+@pytest.fixture(scope="module")
+def test_data_paths():
+    """返回测试数据路径"""
+    alice_path = f'{TEST_DATA_DIR}/alice_train.csv'
+    bob_path = f'{TEST_DATA_DIR}/bob_train.csv'
+    return alice_path, bob_path
+
+
 class TestSSLRConfigValidation:
     """SS-LR配置验证测试"""
     
@@ -110,7 +137,7 @@ class TestSSLRConfigValidation:
             "features": ["f0", "f1", "f2"],
             "label": "y",
             "label_party": "alice",
-            "model_output": f"{TEST_MODEL_DIR}/lr_model",
+            "model_output": f"{TEST_MODELS_DIR}/lr_model",
             "params": {
                 "epochs": 5,
                 "learning_rate": 0.3
@@ -243,7 +270,7 @@ class TestExecuteSSLR:
             "features": ["f0", "f1", "f2"],
             "label": "y",
             "label_party": "alice",
-            "model_output": f"{TEST_MODEL_DIR}/lr_model_test1"
+            "model_output": f"{TEST_MODELS_DIR}/lr_model_test1"
         }
         
         with pytest.raises(ValueError) as exc_info:
@@ -263,7 +290,7 @@ class TestExecuteSSLR:
             "features": ["f0", "f1", "f2"],
             "label": "y",
             "label_party": "alice",
-            "model_output": f"{TEST_MODEL_DIR}/lr_model_test2"
+            "model_output": f"{TEST_MODELS_DIR}/lr_model_test2"
         }
         
         with pytest.raises(ValueError) as exc_info:
@@ -278,7 +305,7 @@ class TestExecuteSSLR:
             "features": ["f0", "f1", "f2"],
             "label": "y",
             "label_party": "alice",
-            "model_output": f"{TEST_MODEL_DIR}/lr_model_test3"
+            "model_output": f"{TEST_MODELS_DIR}/lr_model_test3"
         }
         
         with pytest.raises(ValueError) as exc_info:
@@ -293,7 +320,7 @@ class TestExecuteSSLR:
             "features": ["nonexistent_feature"],
             "label": "y",
             "label_party": "alice",
-            "model_output": f"{TEST_MODEL_DIR}/lr_model_test4"
+            "model_output": f"{TEST_MODELS_DIR}/lr_model_test4"
         }
         
         with pytest.raises(ValueError) as exc_info:
@@ -308,7 +335,7 @@ class TestExecuteSSLR:
             "features": ["f0", "f1"],
             "label": "nonexistent_label",
             "label_party": "alice",
-            "model_output": f"{TEST_MODEL_DIR}/lr_model_test5"
+            "model_output": f"{TEST_MODELS_DIR}/lr_model_test5"
         }
         
         with pytest.raises(ValueError) as exc_info:
@@ -323,7 +350,7 @@ class TestExecuteSSLR:
             "features": ["f0", "f1", "f2", "f6", "f7"],
             "label": "y",
             "label_party": "alice",
-            "model_output": f"{TEST_MODEL_DIR}/lr_model_basic",
+            "model_output": f"{TEST_MODELS_DIR}/lr_model_basic",
             "params": {
                 "epochs": 3,
                 "learning_rate": 0.1,
@@ -334,7 +361,7 @@ class TestExecuteSSLR:
         result = execute_ss_logistic_regression(real_devices, task_config)
         
         assert "model_path" in result
-        assert result["model_path"] == f"{TEST_MODEL_DIR}/lr_model_basic"
+        assert result["model_path"] == f"{TEST_MODELS_DIR}/lr_model_basic"
         assert result["parties"] == ["alice", "bob"]
         assert result["features"] == ["f0", "f1", "f2", "f6", "f7"]
         assert result["label"] == "y"
@@ -343,7 +370,7 @@ class TestExecuteSSLR:
         assert result["params"]["batch_size"] == 64
         
         # 验证模型文件已保存
-        assert os.path.exists(f"{TEST_MODEL_DIR}/lr_model_basic")
+        assert os.path.exists(f"{TEST_MODELS_DIR}/lr_model_basic")
         
         print(f"\nSS-LR Result (basic): {result}")
     
@@ -356,7 +383,7 @@ class TestExecuteSSLR:
             "features": all_features,
             "label": "y",
             "label_party": "alice",
-            "model_output": f"{TEST_MODEL_DIR}/lr_model_all_features",
+            "model_output": f"{TEST_MODELS_DIR}/lr_model_all_features",
             "params": {
                 "epochs": 2,
                 "learning_rate": 0.05
@@ -366,7 +393,7 @@ class TestExecuteSSLR:
         result = execute_ss_logistic_regression(real_devices, task_config)
         
         assert result["features"] == all_features
-        assert os.path.exists(f"{TEST_MODEL_DIR}/lr_model_all_features")
+        assert os.path.exists(f"{TEST_MODELS_DIR}/lr_model_all_features")
         
         print(f"\nSS-LR Result (all features): {result}")
     
@@ -377,7 +404,7 @@ class TestExecuteSSLR:
             "features": ["f0", "f1", "f2"],
             "label": "y",
             "label_party": "alice",
-            "model_output": f"{TEST_MODEL_DIR}/lr_model_default"
+            "model_output": f"{TEST_MODELS_DIR}/lr_model_default"
         }
         
         result = execute_ss_logistic_regression(real_devices, task_config)
@@ -395,30 +422,152 @@ class TestExecuteSSLR:
 
 
 class TestSSLRIntegration:
-    """SS-LR任务集成测试"""
+    """SS-LR集成测试"""
     
-    def test_ss_lr_via_dispatcher(self, real_devices):
+    def test_ss_lr_via_dispatcher(self, setup_devices, test_data_paths):
         """测试通过TaskDispatcher调用SS-LR任务"""
+        devices, alice_path, bob_path = setup_devices
+        
         task_config = {
-            "train_data": {"alice": f"{TEST_DATA_DIR}/alice_train.csv", "bob": f"{TEST_DATA_DIR}/bob_train.csv"},
-            "features": ["f0", "f1", "f2", "f6", "f7", "f8"],
+            "train_data": {"alice": alice_path, "bob": bob_path},
+            "features": ["f0", "f1", "f2", "f6", "f7"],
             "label": "y",
             "label_party": "alice",
-            "model_output": f"{TEST_MODEL_DIR}/lr_model_dispatcher",
+            "model_output": f"{TEST_MODELS_DIR}/lr_model_dispatcher",
             "params": {
-                "epochs": 2,
-                "learning_rate": 0.1
+                "epochs": 3,
+                "learning_rate": 0.1,
+                "batch_size": 64
             }
         }
         
-        result = TaskDispatcher.dispatch('ss_lr', real_devices, task_config)
+        # 通过TaskDispatcher调用
+        result = TaskDispatcher.dispatch('ss_lr', devices, task_config)
         
-        assert "model_path" in result
-        assert result["model_path"] == f"{TEST_MODEL_DIR}/lr_model_dispatcher"
-        assert result["parties"] == ["alice", "bob"]
-        assert os.path.exists(f"{TEST_MODEL_DIR}/lr_model_dispatcher")
+        assert result is not None
+        assert result['model_path'] == task_config['model_output']
+        assert result['parties'] == ['alice', 'bob']
+        assert result['features'] == task_config['features']
+        assert result['label'] == 'y'
         
-        print(f"\nDispatcher SS-LR Result: {result}")
+        # 验证模型文件存在
+        assert os.path.exists(result['model_path'])
+
+
+class TestModelSaveLoad:
+    """模型保存和加载测试"""
+    
+    def test_model_save_and_load(self, setup_devices, test_data_paths):
+        """测试模型保存和加载"""
+        from secretflow_task.jobs.ml_task import load_ss_lr_model
+        
+        devices, alice_path, bob_path = setup_devices
+        
+        model_path = f"{TEST_MODELS_DIR}/lr_model_save_load"
+        
+        # 训练并保存模型
+        task_config = {
+            "train_data": {"alice": alice_path, "bob": bob_path},
+            "features": ["f0", "f1", "f2", "f6", "f7"],
+            "label": "y",
+            "label_party": "alice",
+            "model_output": model_path,
+            "params": {
+                "epochs": 3,
+                "learning_rate": 0.1,
+                "batch_size": 64
+            }
+        }
+        
+        result = TaskDispatcher.dispatch('ss_lr', devices, task_config)
+        assert os.path.exists(model_path)
+        
+        # 加载模型
+        spu_device = devices['spu']
+        model_info = load_ss_lr_model(model_path, spu_device)
+        
+        assert model_info is not None
+        assert 'model' in model_info
+        assert model_info['features'] == task_config['features']
+        assert model_info['label'] == 'y'
+        assert model_info['label_party'] == 'alice'
+        assert model_info['parties'] == ['alice', 'bob']
+        
+        # 验证参与方引用文件
+        assert os.path.exists(f"{model_path}.alice")
+        assert os.path.exists(f"{model_path}.bob")
+    
+    def test_model_predict(self, setup_devices, test_data_paths):
+        """测试模型预测"""
+        devices, alice_path, bob_path = setup_devices
+        
+        model_path = f"{TEST_MODELS_DIR}/lr_model_predict"
+        predict_output = f"{TEST_MODELS_DIR}/predictions.csv"
+        
+        # 训练模型
+        train_config = {
+            "train_data": {"alice": alice_path, "bob": bob_path},
+            "features": ["f0", "f1", "f2", "f6", "f7"],
+            "label": "y",
+            "label_party": "alice",
+            "model_output": model_path,
+            "params": {
+                "epochs": 3,
+                "learning_rate": 0.1,
+                "batch_size": 64
+            }
+        }
+        
+        TaskDispatcher.dispatch('ss_lr', devices, train_config)
+        
+        # 执行预测
+        predict_config = {
+            "model_path": model_path,
+            "predict_data": {"alice": alice_path, "bob": bob_path},
+            "output_path": predict_output,
+            "receiver_party": "alice"
+        }
+        
+        result = TaskDispatcher.dispatch('ss_lr_predict', devices, predict_config)
+        
+        assert result is not None
+        assert result['output_path'] == predict_output
+        assert result['receiver_party'] == 'alice'
+        assert result['num_predictions'] > 0
+        assert 'statistics' in result
+        
+        # 验证预测文件存在
+        assert os.path.exists(predict_output)
+        
+        # 验证预测结果格式
+        import pandas as pd
+        pred_df = pd.read_csv(predict_output)
+        assert 'prediction' in pred_df.columns
+        assert 'probability' in pred_df.columns
+        assert len(pred_df) == result['num_predictions']
+    
+    def test_load_nonexistent_model(self, setup_devices):
+        """测试加载不存在的模型"""
+        from secretflow_task.jobs.ml_task import load_ss_lr_model
+        
+        devices, _, _ = setup_devices
+        spu_device = devices['spu']
+        
+        with pytest.raises(FileNotFoundError):
+            load_ss_lr_model("/nonexistent/model.json", spu_device)
+    
+    def test_predict_missing_model(self, setup_devices, test_data_paths):
+        """测试使用不存在的模型进行预测"""
+        devices, alice_path, bob_path = setup_devices
+        
+        predict_config = {
+            "model_path": "/nonexistent/model.json",
+            "predict_data": {"alice": alice_path, "bob": bob_path},
+            "output_path": f"{TEST_MODELS_DIR}/predictions_fail.csv"
+        }
+        
+        with pytest.raises(Exception):
+            TaskDispatcher.dispatch('ss_lr_predict', devices, predict_config)
 
 
 if __name__ == "__main__":
