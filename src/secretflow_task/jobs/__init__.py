@@ -9,14 +9,17 @@ SecretFlow任务模块
 - 评估任务: 模型评估指标计算
 """
 
-from .psi_task import *
-from .preprocessing_task import *
-from .ml_task import *
-from .stats_task import *
-from .evaluation_task import *
+from .psi_task import execute_psi
+from .linear import execute_ss_logistic_regression, execute_ss_lr_predict
+from .boost import execute_ss_xgboost, execute_ss_xgb_predict
 
-# __all__ = [
-#     'psi_task',
+__all__ = [
+    'execute_psi',
+    'execute_ss_logistic_regression',
+    'execute_ss_lr_predict',
+    'execute_ss_xgboost',
+    'execute_ss_xgb_predict',
+]
 #     'preprocessing_task',
 #     'ml_task',
 #     'stats_task',

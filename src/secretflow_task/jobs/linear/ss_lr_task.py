@@ -1,5 +1,5 @@
 """
-机器学习任务模块
+SS-LR (Secret Sharing Logistic Regression) 任务模块
 
 使用SPU的dump/load机制保存密文分片，每个参与方只保存自己的部分。
 预测结果使用to_pyu参数只发送给指定接收方，不公开reveal。
@@ -14,9 +14,8 @@ from datetime import datetime
 import secretflow as sf
 from secretflow.device import SPU, PYU
 from secretflow.ml.linear.ss_sgd import SSRegression
-from secretflow.data.vertical import VDataFrame
 
-from ..task_dispatcher import TaskDispatcher
+from ...task_dispatcher import TaskDispatcher
 
 logger = logging.getLogger(__name__)
 
@@ -321,7 +320,7 @@ def execute_ss_logistic_regression(devices: Dict[str, PYU], task_config: Dict) -
             - features: List[str] - 特征列名列表
             - label: str - 标签列名
             - label_party: str - 标签所属参与方
-            - model_output: str - 模型输出路径
+            - model_output: Dict[str, str] - 模型输出路径字典 {party: path}
             - params: Dict - 可选训练参数
                 
     Returns:

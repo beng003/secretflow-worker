@@ -10,9 +10,9 @@ import os
 from pathlib import Path
 import secretflow as sf
 
-from secretflow_task.jobs.ml_task import (
+from secretflow_task.jobs.linear.ss_lr_task import (
     execute_ss_logistic_regression,
-    load_ss_lr_model
+    load_ss_lr_model,
 )
 from secretflow_task.task_dispatcher import TaskDispatcher
 
@@ -208,6 +208,106 @@ class TestSecureModelSaveLoad:
         print(f"\n✅ 密文分片验证通过")
         print(f"   Alice分片大小: {len(alice_share)} bytes")
         print(f"   Bob分片大小: {len(bob_share)} bytes")
+
+
+class TestSSXGBoost:
+    """SS-XGBoost模型训练和预测测试"""
+    
+    def test_ss_xgb_train(self, setup_devices):
+        """测试SS-XGBoost训练"""
+        devices, alice_path, bob_path = setup_devices
+        
+        # 使用字典格式的模型路径
+        model_output = {
+            "alice": f"{TEST_MODELS_DIR}/alice/xgb_model.model",
+            "bob": f"{TEST_MODELS_DIR}/bob/xgb_model.model"
+        }
+        
+        # 训练配置
+        task_config = {
+            "train_data": {"alice": alice_path, "bob": bob_path},
+            "features": ["f0", "f1", "f2", "f6", "f7"],
+            "label": "y",
+            "label_party": "alice",
+            "model_output": model_output,
+            "params": {
+                "num_boost_round": 3,
+                "max_depth": 3,
+                "learning_rate": 0.3,
+                "objective": "logistic",
+                "reg_lambda": 0.1
+            }
+        }
+        
+        result = TaskDispatcher.dispatch('ss_xgb', devices, task_config)
+        
+        assert result is not None
+        assert result['secure_mode'] is True
+        assert result['num_trees'] == 3
+        
+        # 验证文件存在
+        assert os.path.exists(f"{model_output['alice']}.meta.json")
+        assert os.path.exists(f"{model_output['bob']}.meta.json")
+        
+        print("\n✅ SS-XGBoost训练测试通过")
+    
+    def test_ss_xgb_predict(self, setup_devices):
+        """测试SS-XGBoost预测"""
+        devices, alice_path, bob_path = setup_devices
+        
+        # 使用字典格式的模型路径
+        model_output = {
+            "alice": f"{TEST_MODELS_DIR}/alice/xgb_model_pred.model",
+            "bob": f"{TEST_MODELS_DIR}/bob/xgb_model_pred.model"
+        }
+        
+        # 使用字典格式的预测输出路径
+        predict_output = {
+            "alice": f"{TEST_MODELS_DIR}/alice/xgb_predictions.csv",
+            "bob": f"{TEST_MODELS_DIR}/bob/xgb_predictions.csv"
+        }
+        
+        # 训练模型
+        train_config = {
+            "train_data": {"alice": alice_path, "bob": bob_path},
+            "features": ["f0", "f1", "f2", "f6", "f7"],
+            "label": "y",
+            "label_party": "alice",
+            "model_output": model_output,
+            "params": {
+                "num_boost_round": 3,
+                "max_depth": 3
+            }
+        }
+        
+        TaskDispatcher.dispatch('ss_xgb', devices, train_config)
+        
+        # 执行预测
+        predict_config = {
+            "model_path": model_output,
+            "predict_data": {"alice": alice_path, "bob": bob_path},
+            "output_path": predict_output,
+            "receiver_party": "alice"
+        }
+        
+        result = TaskDispatcher.dispatch('ss_xgb_predict', devices, predict_config)
+        
+        assert result is not None
+        assert result['secure_mode'] is True
+        assert result['output_path'] == predict_output
+        assert result['num_predictions'] > 0
+        assert 'statistics' not in result
+        
+        # 验证预测文件存在（只有接收方alice有预测结果）
+        assert os.path.exists(predict_output['alice'])
+        
+        # 验证预测结果格式
+        import pandas as pd
+        pred_df = pd.read_csv(predict_output['alice'])
+        assert 'prediction' in pred_df.columns
+        assert 'probability' in pred_df.columns
+        
+        print("\n✅ SS-XGBoost预测测试通过")
 
 
 if __name__ == "__main__":
