@@ -59,7 +59,7 @@ class CeleryConfig:
     def beat_schedule(self) -> dict[str, dict]:
         """定时任务调度配置"""
         return {}  # 暂时为空
-    
+
     @property
     def include(self) -> list[str]:
         """任务模块包含路径"""
@@ -67,7 +67,7 @@ class CeleryConfig:
             "secretflow_task.celery_tasks",
             "secretflow_task.hello",
             "secretflow_task.local_test",
-            "secretflow_task.health_check"
+            "secretflow_task.health_check",
         ]
 
     @property
@@ -86,46 +86,42 @@ class CeleryConfig:
             dict: 完整的Celery配置参数
         """
         from kombu import Exchange, Queue
-        
+
         # 任务队列定义
         default_exchange = Exchange("default", type="direct")
         secretflow_exchange = Exchange("secretflow", type="direct")
         web_exchange = Exchange("web", type="direct")
-        
+
         task_queues = (
             Queue("default", default_exchange, routing_key="default"),
             Queue("secretflow_queue", secretflow_exchange, routing_key="secretflow"),
             Queue("web_queue", web_exchange, routing_key="web"),
         )
-        
+
         # 任务路由规则
         task_routes = {
             "tasks.secretflow.*": {"queue": "secretflow_queue"},
         }
-        
+
         # 任务模块包含路径
         include_modules = self.include
-        
+
         return {
             # Redis连接配置
             "broker_url": self.settings.redis_url,
             "result_backend": self.settings.redis_url,
-            
             # 序列化配置
             "task_serializer": self.settings.task_serializer,
             "result_serializer": self.settings.result_serializer,
             "accept_content": self.settings.accept_content,
-            
             # 时区配置
             "timezone": self.settings.timezone,
-            
             # 队列和路由配置
             "task_queues": task_queues,
             "task_routes": task_routes,
             "task_default_queue": self.settings.task_default_queue,
             "task_default_exchange": self.settings.task_default_exchange,
             "task_default_routing_key": self.settings.task_default_routing_key,
-            
             # 任务行为配置
             "task_acks_late": self.settings.task_acks_late,
             "task_reject_on_worker_lost": self.settings.task_reject_on_worker_lost,
@@ -133,7 +129,6 @@ class CeleryConfig:
             "task_time_limit": self.settings.task_time_limit,
             "result_expires": self.settings.result_expires,
             "task_track_started": self.settings.task_track_started,
-            
             # Worker配置
             "worker_log_level": self.settings.worker_loglevel,
             "worker_hijack_root_logger": self.settings.worker_hijack_root_logger,
@@ -146,7 +141,6 @@ class CeleryConfig:
             "worker_disable_rate_limits": self.settings.worker_disable_rate_limits,
             "worker_send_task_events": self.settings.worker_send_task_events,
             "worker_redirect_stdouts": False,
-            
             # 定时任务和模块包含
             "beat_schedule": {},  # 暂时为空
             "include": include_modules,

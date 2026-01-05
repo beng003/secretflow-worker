@@ -191,7 +191,7 @@ class TaskRegistry:
         """
         known_modules = [
             # note: 未来可添加更多计算任务模块
-            "src.secretflow",   # SecretFlow计算任务
+            "src.secretflow",  # SecretFlow计算任务
         ]
 
         stats = {
@@ -363,7 +363,9 @@ class TaskRegistry:
                     missing_modules.append(module)
 
             if missing_modules:
-                health_status["issues"].append(f"关键SecretFlow模块未加载: {missing_modules}")
+                health_status["issues"].append(
+                    f"关键SecretFlow模块未加载: {missing_modules}"
+                )
                 health_status["status"] = "error"
 
             health_status["checks"]["critical_modules"] = {

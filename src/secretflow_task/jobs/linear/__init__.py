@@ -8,6 +8,6 @@ from .ss_lr_task import (
 )
 
 __all__ = [
-    'execute_ss_logistic_regression',
-    'execute_ss_lr_predict',
+    "execute_ss_logistic_regression",
+    "execute_ss_lr_predict",
 ]

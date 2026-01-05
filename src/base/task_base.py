@@ -29,7 +29,6 @@ class BaseTask(Task, ABC):
         self._start_time = None
         self._task_context = {}
 
-
     def before_start(self, task_id: str, args: tuple, kwargs: dict) -> None:
         """任务开始前的钩子"""
         self._start_time = time.time()
@@ -198,6 +197,7 @@ class BaseTask(Task, ABC):
                 },
             )
 
+
 class WebTask(BaseTask):
     """
     Web应用任务基类
@@ -255,27 +255,37 @@ class SecretFlowTask(BaseTask):
                 "soft_time_limit": self.soft_time_limit,
             },
         )
-        
+
         # 自动上报任务开始状态
-        self._publish_task_status(task_id, "RUNNING", {
-            "stage": "started",
-            "task_name": self.name,
-            "args_count": len(args),
-            "kwargs_count": len(kwargs),
-            "time_limit": self.time_limit
-        })
+        self._publish_task_status(
+            task_id,
+            "RUNNING",
+            {
+                "stage": "started",
+                "task_name": self.name,
+                "args_count": len(args),
+                "kwargs_count": len(kwargs),
+                "time_limit": self.time_limit,
+            },
+        )
 
     def on_success(self, retval: Any, task_id: str, args: tuple, kwargs: dict) -> None:
         """SecretFlow任务成功完成处理"""
         super().on_success(retval, task_id, args, kwargs)
-        
+
         # 自动上报任务成功状态
-        self._publish_task_status(task_id, "SUCCESS", {
-            "stage": "completed",
-            "task_name": self.name,
-            "result_type": type(retval).__name__,
-            "execution_time": time.time() - self._start_time if self._start_time else 0
-        })
+        self._publish_task_status(
+            task_id,
+            "SUCCESS",
+            {
+                "stage": "completed",
+                "task_name": self.name,
+                "result_type": type(retval).__name__,
+                "execution_time": time.time() - self._start_time
+                if self._start_time
+                else 0,
+            },
+        )
 
     def on_failure(
         self, exc: Exception, task_id: str, args: tuple, kwargs: dict, einfo
@@ -292,19 +302,25 @@ class SecretFlowTask(BaseTask):
                 "critical_failure": True,
             },
         )
-        
+
         # 自动上报任务失败状态
-        self._publish_task_status(task_id, "FAILURE", {
-            "stage": "failed",
-            "task_name": self.name,
-            "error_type": type(exc).__name__,
-            "error_message": str(exc),
-            "execution_time": time.time() - self._start_time if self._start_time else 0
-        })
+        self._publish_task_status(
+            task_id,
+            "FAILURE",
+            {
+                "stage": "failed",
+                "task_name": self.name,
+                "error_type": type(exc).__name__,
+                "error_message": str(exc),
+                "execution_time": time.time() - self._start_time
+                if self._start_time
+                else 0,
+            },
+        )
 
     def _publish_task_status(self, task_id: str, status: str, data: dict) -> None:
         """发布SecretFlow任务状态
-        
+
         Args:
             task_id: 任务ID
             status: 任务状态
@@ -312,6 +328,7 @@ class SecretFlowTask(BaseTask):
         """
         try:
             from utils.status_notifier import _publish_status
+
             _publish_status(task_id, status, data)
         except Exception:
             # 静默失败，确保状态上报不影响主任务

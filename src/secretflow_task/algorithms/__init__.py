@@ -9,4 +9,4 @@ SecretFlow算法执行器模块
 
 from .base_executor import BaseTaskExecutor
 
-__all__ = ['BaseTaskExecutor']
+__all__ = ["BaseTaskExecutor"]

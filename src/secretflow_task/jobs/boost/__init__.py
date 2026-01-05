@@ -8,6 +8,6 @@ from .ss_xgb_task import (
 )
 
 __all__ = [
-    'execute_ss_xgboost',
-    'execute_ss_xgb_predict',
+    "execute_ss_xgboost",
+    "execute_ss_xgb_predict",
 ]

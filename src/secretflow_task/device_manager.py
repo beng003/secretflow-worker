@@ -12,10 +12,10 @@ from secretflow.device import PYU, SPU, HEU
 
 class DeviceManager:
     """SecretFlow设备管理器 - 单例模式"""
-    
+
     _instance = None
     _initialized = False
-    
+
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
@@ -26,21 +26,21 @@ class DeviceManager:
             self._devices: dict[str, Union[PYU, SPU, HEU]] = {}
             self._device_init_times: dict[str, float] = {}
             DeviceManager._initialized = True
-    
+
     @classmethod
-    def get_instance(cls) -> 'DeviceManager':
+    def get_instance(cls) -> "DeviceManager":
         """获取DeviceManager单例实例
-        
+
         Returns:
             DeviceManager: 设备管理器单例实例
         """
         return cls()
 
     def initialize_devices(
-        self, 
+        self,
         pyu_config: dict | None = None,
-        spu_config: dict | None = None, 
-        heu_config: dict | None = None
+        spu_config: dict | None = None,
+        heu_config: dict | None = None,
     ) -> dict:
         """初始化计算设备
 
@@ -55,20 +55,20 @@ class DeviceManager:
             dict: 初始化的设备实例
         """
         devices = {}
-        
+
         # 从SPU配置中提取参与方信息
         parties = []
-        if spu_config and 'cluster_def' in spu_config:
-            cluster_def = spu_config['cluster_def']
+        if spu_config and "cluster_def" in spu_config:
+            cluster_def = spu_config["cluster_def"]
             # 处理 cluster_def 可能是字典或对象的情况
             if isinstance(cluster_def, dict):
-                nodes = cluster_def.get('nodes', [])
+                nodes = cluster_def.get("nodes", [])
             else:
                 # 尝试作为对象访问（如果是 protobuf 对象）
-                nodes = getattr(cluster_def, 'nodes', [])
-                
-            parties = [node['party'] for node in nodes if 'party' in node]
-        
+                nodes = getattr(cluster_def, "nodes", [])
+
+            parties = [node["party"] for node in nodes if "party" in node]
+
         logger.info(f"检测到参与方: {parties}")
 
         # 按需初始化PYU设备
@@ -94,7 +94,7 @@ class DeviceManager:
 
         return devices
 
-    def create_pyu_devices(self, parties:list) -> dict[str, PYU]:
+    def create_pyu_devices(self, parties: list) -> dict[str, PYU]:
         """创建PYU设备
 
         Args:
@@ -112,7 +112,7 @@ class DeviceManager:
                     pyu_device = PYU(party)
                     pyu_devices[party] = pyu_device
                     logger.info(f"成功创建PYU设备: {party}")
-                    
+
                 except Exception as e:
                     logger.error(f"创建PYU设备 {party} 失败: {e}")
                     continue
@@ -144,22 +144,22 @@ class DeviceManager:
 
         try:
             device_type = "spu"
-            
+
             # 提取cluster_def参数
-            cluster_def = config.get('cluster_def')
+            cluster_def = config.get("cluster_def")
             if not cluster_def:
                 logger.error("SPU配置中缺少cluster_def字段")
                 return None
-            
+
             logger.info(f"创建SPU设备，cluster_def: {cluster_def}")
-            
+
             # 创建SPU设备
             spu_device = SPU(cluster_def=cluster_def)
 
             # 记录初始化时间
             init_time = time.time() - start_time
             self._device_init_times[device_type] = init_time
-            
+
             logger.info(f"SPU设备创建成功，耗时: {init_time:.2f}秒")
 
             return spu_device
@@ -232,22 +232,25 @@ class DeviceManager:
             dict: 已初始化设备字典
         """
         return self._devices.copy()
-    
+
     def get_pyu_devices(self) -> dict[str, PYU]:
         """获取所有PYU设备
-        
+
         Returns:
             dict[str, PYU]: PYU设备字典，键为参与方名称
         """
-        return {name: device for name, device in self._devices.items() 
-                if isinstance(device, PYU)}
-    
+        return {
+            name: device
+            for name, device in self._devices.items()
+            if isinstance(device, PYU)
+        }
+
     def get_device(self, device_name: str) -> Union[PYU, SPU, HEU, None]:
         """根据名称获取设备
-        
+
         Args:
             device_name: 设备名称
-            
+
         Returns:
             设备实例或None
         """

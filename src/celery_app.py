@@ -32,7 +32,9 @@ logger.debug(f"Redis Broker: {celery_config.broker_url}")
 logger.debug(f"任务队列数量: {len(celery_config.task_queues)}")
 logger.debug(f"任务模块: {celery_config.include}")
 logger.debug(f"定时任务数量: {len(celery_config.beat_schedule)}")
-logger.info(f"🚀 进程配置: PID:{current_pid} | Worker进程数:{celery_config.settings.celery_worker_concurrency}")
+logger.info(
+    f"🚀 进程配置: PID:{current_pid} | Worker进程数:{celery_config.settings.celery_worker_concurrency}"
+)
 
 
 # 运行时配置验证
