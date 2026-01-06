@@ -6,7 +6,7 @@
 
 import sys
 
-sys.path.insert(0, "/disc/home/beng003/work/secretflow_test/src")
+sys.path.insert(0, "/disc/home/beng003/work/secretflow-worker/src")
 
 from secretflow_task.task_dispatcher import TaskDispatcher
 

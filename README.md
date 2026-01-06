@@ -57,7 +57,7 @@ SecretFlow Worker 是一个基于 SecretFlow 框架的分布式隐私计算服�
 ## 项目结构
 
 ```
-secretflow_test/
+secretflow-worker/
 ├── src/                          # 源代码目录
 │   ├── base/                     # 基础任务类
 │   │   ├── task_base.py         # 任务基类
@@ -128,7 +128,7 @@ secretflow_test/
 1. **克隆项目**
 ```bash
 git clone <repository-url>
-cd secretflow_test
+cd secretflow-worker
 ```
 
 2. **配置环境变量**

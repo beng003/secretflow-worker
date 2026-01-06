@@ -69,12 +69,12 @@ uv run celery -A src.celery_app call tasks.secretflow.execute_task --queue=secre
             "task_type": "psi",
             "keys": "uid",
             "input_paths": {
-                "alice": "/disc/home/beng003/work/secretflow_test/tests/data/alice.csv",
-                "bob": "/disc/home/beng003/work/secretflow_test/tests/data/bob.csv"
+                "alice": "/disc/home/beng003/work/secretflow-worker/tests/data/alice.csv",
+                "bob": "/disc/home/beng003/work/secretflow-worker/tests/data/bob.csv"
             },
             "output_paths": {
-                "alice": "/disc/home/beng003/work/secretflow_test/tests/data/alice_psi_cli_out.csv",
-                "bob": "/disc/home/beng003/work/secretflow_test/tests/data/bob_psi_cli_out.csv"
+                "alice": "/disc/home/beng003/work/secretflow-worker/tests/data/alice_psi_cli_out.csv",
+                "bob": "/disc/home/beng003/work/secretflow-worker/tests/data/bob_psi_cli_out.csv"
             },
             "receiver_party": "alice",
             "protocol": "KKRT_PSI_2PC",
