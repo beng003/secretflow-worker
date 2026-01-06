@@ -375,9 +375,9 @@ def execute_my_task(devices, task_config):
 
 ## 联系方式
 
-- 项目维护者：[Your Name]
-- 邮箱：[your.email@example.com]
-- 项目主页：[Project URL]
+- 项目维护者：beng003
+- 邮箱：3250902461@qq.com
+- 项目主页：https://github.com/beng003/secretflow-worker
 
 ## 致谢
 
