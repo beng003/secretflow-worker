@@ -59,6 +59,9 @@ COPY docker/ /app/docker/
 COPY main.py /app/
 COPY .env.secretflow /app/
 
+# 设置脚本执行权限
+RUN chmod +x /app/scripts/*.sh
+
 # 创建非 root 用户
 RUN groupadd -r secretflow && \
     useradd -r -g secretflow -m -s /bin/bash secretflow && \
@@ -67,12 +70,9 @@ RUN groupadd -r secretflow && \
 # 切换到非 root 用户
 USER secretflow
 
-# 暴露端口
-EXPOSE 9394
+# 使用入口脚本启动
+ENTRYPOINT ["/app/scripts/entrypoint.sh"]
 
-# 设置启动命令
-CMD ["python", "-m", "src.worker"]
-
-# 健康检查
+# 健康检查（检查Worker进程是否运行）
 HEALTHCHECK --interval=60s --timeout=30s --start-period=60s --retries=3 \
-    CMD celery -A src.celery_app call tasks.secretflow.health_check.health_check_task
+    CMD pgrep -f "python src/worker.py" || exit 1
