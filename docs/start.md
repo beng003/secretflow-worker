@@ -102,3 +102,12 @@ docker build -f docker/Dockerfile -t secretflow-worker .
 # 查看构建过程详细信息
 docker build -t secretflow-worker . --progress=plain
 ```
+
+### 5. Docker Compose
+```bash
+docker compose -f docker/docker-compose.production.yml --env-file .env.production up -d
+
+docker compose -f docker/docker-compose.production.yml --env-file .env.production down
+
+docker compose -f docker/docker-compose.production.yml --env-file .env.production logs -f
+```

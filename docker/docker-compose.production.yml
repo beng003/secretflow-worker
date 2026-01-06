@@ -6,18 +6,23 @@ services:
     image: redis:7-alpine
     container_name: ${NODE_ID}-redis
     network_mode: "host"
-    command: >
-      redis-server
-      --port ${REDIS_PORT}
-      --maxmemory 2gb
-      --maxmemory-policy allkeys-lru
-      --appendonly yes
-      --appendfsync everysec
+    command:
+      - redis-server
+      - --port
+      - "60379"
+      - --maxmemory
+      - "2gb"
+      - --maxmemory-policy
+      - allkeys-lru
+      - --appendonly
+      - "yes"
+      - --appendfsync
+      - everysec
     volumes:
       - redis_data:/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "redis-cli", "-p", "${REDIS_PORT}", "ping"]
+      test: ["CMD", "redis-cli", "-p", "60379", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -38,6 +43,7 @@ services:
     volumes:
       - worker_data:/app/data
       - worker_logs:/app/logs
+      - ../data:/app/data
       - /dev/shm:/dev/shm
     restart: unless-stopped
     healthcheck:

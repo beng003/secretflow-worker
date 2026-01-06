@@ -2,29 +2,32 @@
 set -e
 
 echo "🚀 启动SecretFlow Worker容器..."
+echo "📋 节点ID: ${NODE_ID}"
+echo "📋 节点IP: ${NODE_IP}"
 
-# 根据节点类型启动Ray
-if [ "$RAY_NODE_TYPE" = "head" ]; then
-    echo "📋 节点类型：Ray头节点"
-    /app/scripts/start_ray_head.sh &
-elif [ "$RAY_NODE_TYPE" = "worker" ]; then
-    echo "📋 节点类型：Ray工作节点"
-    /app/scripts/start_ray_worker.sh &
-else
-    echo "❌ 错误：未知的RAY_NODE_TYPE: $RAY_NODE_TYPE"
-    exit 1
-fi
+# 使用ray start命令启动独立的Ray集群
+# 每个节点都启动自己的头节点
+echo "🚀 启动Ray集群..."
+ray start --head \
+    --node-ip-address="${NODE_IP}" \
+    --port="${RAY_PORT:-61379}" \
+    --num-cpus="${RAY_NUM_CPUS:-0}" \
+    --object-store-memory="${RAY_OBJECT_STORE_MEMORY:-2000000000}" \
+    --include-dashboard=False \
+    --disable-usage-stats
 
-RAY_PID=$!
-
-# 等待Ray启动完成
-sleep 5
-
-# 验证Ray是否运行
-if ! ps -p $RAY_PID > /dev/null; then
+if [ $? -ne 0 ]; then
     echo "❌ Ray启动失败"
     exit 1
 fi
+
+# 等待Ray启动完成
+echo "⏳ 等待Ray初始化..."
+sleep 5
+
+# 验证Ray状态
+echo "📊 检查Ray状态..."
+ray status || echo "⚠️  ray status命令失败，但Ray可能已正常启动"
 
 echo "✅ Ray启动成功"
 

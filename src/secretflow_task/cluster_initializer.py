@@ -56,6 +56,29 @@ class SecretFlowClusterInitializer:
 
             # 使用SecretFlow原生API初始化集群
             import secretflow as sf
+            import os
+
+            # 配置Ray运行时环境，确保worker进程能找到项目模块
+            # 添加/app/src到Python路径，使Ray worker能导入secretflow_task等模块
+            if 'runtime_env' not in sf_init_config:
+                sf_init_config['runtime_env'] = {}
+            
+            if 'env_vars' not in sf_init_config['runtime_env']:
+                sf_init_config['runtime_env']['env_vars'] = {}
+            
+            # 设置PYTHONPATH包含/app/src，确保Ray worker能找到模块
+            current_pythonpath = os.environ.get('PYTHONPATH', '')
+            app_src_path = '/app/src'
+            
+            if app_src_path not in current_pythonpath:
+                if current_pythonpath:
+                    sf_init_config['runtime_env']['env_vars']['PYTHONPATH'] = f"{app_src_path}:{current_pythonpath}"
+                else:
+                    sf_init_config['runtime_env']['env_vars']['PYTHONPATH'] = app_src_path
+            else:
+                sf_init_config['runtime_env']['env_vars']['PYTHONPATH'] = current_pythonpath
+            
+            logger.info(f"配置Ray运行时环境PYTHONPATH: {sf_init_config['runtime_env']['env_vars']['PYTHONPATH']}")
 
             sf.init(**sf_init_config)
 

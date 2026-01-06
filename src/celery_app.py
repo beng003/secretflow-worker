@@ -78,6 +78,27 @@ def validate_celery_setup():
         logger.error(f"❌ Celery配置验证失败: {e}")
         return False
 
+import importlib
+import pkgutil
+import inspect
+from secretflow_task import jobs
+
+# 自动导入所有任务模块
+def import_all_task_modules():
+    # 导入主模块
+    for module_name in ["celery_tasks", "hello", "health_check", "local_test"]:
+        importlib.import_module(f"secretflow_task.{module_name}")
+    
+    # 递归导入jobs包下所有模块，自动发现和注册任务
+    def import_submodules(package):
+        for _, name, is_pkg in pkgutil.iter_modules(package.__path__, package.__name__ + "."):
+            module = importlib.import_module(name)
+            if is_pkg:
+                import_submodules(module)
+    
+    import_submodules(jobs)
+# 执行导入
+import_all_task_modules()
 
 # 启动时验证配置
 if __name__ != "__main__":

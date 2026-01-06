@@ -19,6 +19,7 @@ dependencies = [
     "flower",
     "loguru",
     "python-dotenv",
+    "click>=8.0.0,<8.1.0",
 ]
 
 [tool.uv]

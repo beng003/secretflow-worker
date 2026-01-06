@@ -41,12 +41,6 @@ class ParameterValidationError(SecretFlowTaskError):
     pass
 
 
-class DataLoadError(SecretFlowTaskError):
-    """数据加载错误异常"""
-
-    pass
-
-
 class ResultSaveError(SecretFlowTaskError):
     """结果保存错误异常"""
 

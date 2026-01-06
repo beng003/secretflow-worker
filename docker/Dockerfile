@@ -73,6 +73,6 @@ USER secretflow
 # 使用入口脚本启动
 ENTRYPOINT ["/app/scripts/entrypoint.sh"]
 
-# 健康检查（检查Worker进程是否运行）
-HEALTHCHECK --interval=60s --timeout=30s --start-period=60s --retries=3 \
-    CMD pgrep -f "python src/worker.py" || exit 1
+# 健康检查：检查Worker进程和Ray进程是否运行
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD pgrep -f "celery worker" > /dev/null && pgrep -f "ray::IDLE" > /dev/null || exit 1

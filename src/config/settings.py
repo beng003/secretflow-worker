@@ -26,7 +26,7 @@ class Settings:
         self.app_env = os.getenv("APP_ENV", "development")
 
         # Redis配置
-        self.redis_url = os.getenv("REDIS_URL", "redis://localhost:16379/0")
+        self.redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
         self.cache_ttl = int(os.getenv("CACHE_TTL", "3600"))
 
         # 节点配置

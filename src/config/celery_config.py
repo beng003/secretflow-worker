@@ -167,8 +167,10 @@ class CeleryConfig:
             if self.settings.debug:
                 raise ValueError("生产环境不能启用DEBUG模式")
 
-            if "localhost" in self.broker_url:
-                raise ValueError("生产环境不应使用localhost的Redis连接")
+            # Host网络模式下允许使用127.0.0.1连接本地Redis
+            # 检查是否使用了不推荐的配置
+            if "localhost" in self.broker_url and "127.0.0.1" not in self.broker_url:
+                raise ValueError("生产环境请使用127.0.0.1而非localhost")
 
         return True
 
