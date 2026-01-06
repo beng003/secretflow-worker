@@ -1,0 +1,701 @@
+# SecretFlow生产部署设计方案 - Host网络模式
+
+## 📋 文档信息
+
+- **版本**：v2.0
+- **创建时间**：2026年1月6日
+- **适用场景**：生产环境多节点部署
+- **网络模式**：Host Network
+- **参考文档**：[SecretFlow官方部署文档](https://github.com/secretflow/secretflow/blob/main/docs/getting_started/deployment.md)
+
+---
+
+## 🎯 设计目标
+
+1. **符合官方最佳实践**：严格遵循SecretFlow官方推荐的生产部署方式
+2. **简化配置**：减少复杂的端口映射和网络配置
+3. **性能最优**：使用host网络模式，避免NAT转换开销
+4. **易于扩展**：支持多节点、多服务器部署
+5. **稳定可靠**：避免之前方案中的兼容性和配置问题
+
+---
+
+## 🏗️ 架构设计
+
+### 整体架构
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      宿主机 (Host Network)                    │
+├─────────────────────────────────────────────────────────────┤
+│                                                               │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
+│  │   Redis      │  │  Ray Head    │  │    Celery    │      │
+│  │  (60379)     │  │   (61379)     │  │    Worker    │      │
+│  └──────────────┘  └──────────────┘  └──────────────┘      │
+│                                                               │
+│  端口使用：                                                   │
+│  - Redis: 60379 (Celery任务队列)                            │
+│  - Ray GCS: 61379 (Ray集群通信)                              │
+│  - SecretFlow: 19000-19009 (节点通信)                       │
+│  - SPU: 19500-19509 (安全计算协议)                          │
+│  - HEU: 19800-19809 (同态加密)                              │
+│  - Celery监控: 8088                                         │
+│                                                               │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 多节点部署架构
+
+```
+┌──────────────────────┐         ┌──────────────────────┐
+│   节点1 (头节点)      │         │   节点2 (工作节点)    │
+│   192.168.1.10       │◄───────►│   192.168.1.11       │
+├──────────────────────┤         ├──────────────────────┤
+│ Redis: 60379         │         │ Redis: 60379         │
+│ Ray Head: 61379       │         │ Ray Worker           │
+│ Worker               │         │ Worker               │
+│ SF: 19000-19009      │         │ SF: 19100-19109      │
+│ SPU: 19500-19509     │         │ SPU: 19600-19609     │
+│ HEU: 19800-19809     │         │ HEU: 19859-19899     │
+└──────────────────────┘         └──────────────────────┘
+         │                                  │
+         └──────────────┬───────────────────┘
+                        │
+              直接通过宿主机网络通信
+              无需端口映射，无NAT开销
+```
+
+---
+
+## 📁 文件结构
+
+```
+secretflow_test/
+├── docker/
+│   ├── docker-compose.production.yml    # Host网络配置
+│   ├── docker-compose.head.yml          # Ray头节点配置
+│   ├── docker-compose.worker.yml        # Ray工作节点配置
+│   └── Dockerfile                       # 容器镜像定义
+├── config/
+│   ├── production.env.template          # 生产环境配置模板
+│   ├── node1.env                        # 节点1配置示例
+│   └── node2.env                        # 节点2配置示例
+├── scripts/
+│   ├── start_ray_head.sh               # Ray头节点启动脚本
+│   ├── start_ray_worker.sh             # Ray工作节点启动脚本
+│   ├── entrypoint.sh                   # 容器入口脚本
+│   └── deploy.sh                        # 一键部署脚本
+├── src/
+│   └── worker.py                        # Celery Worker (移除Ray初始化)
+└── docs/
+    ├── deployment_guide.md              # 部署指南
+    └── troubleshooting.md               # 故障排查
+```
+
+---
+
+## 🔧 详细设计
+
+### 1. Docker Compose配置
+
+#### 1.1 生产环境配置 (docker-compose.production.yml)
+
+```yaml
+version: '3.8'
+
+services:
+  # Redis服务 - Celery任务队列
+  redis:
+    image: redis:7-alpine
+    container_name: ${NODE_ID}-redis
+    network_mode: "host"
+    command: >
+      redis-server
+      --port ${REDIS_PORT}
+      --maxmemory 2gb
+      --maxmemory-policy allkeys-lru
+      --appendonly yes
+      --appendfsync everysec
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "${REDIS_PORT}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Worker服务 - Celery + Ray
+  worker:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: secretflow-worker:latest
+    container_name: ${NODE_ID}-worker
+    network_mode: "host"
+    depends_on:
+      redis:
+        condition: service_healthy
+    env_file:
+      - ../.env.production
+    volumes:
+      - worker_data:/app/data
+      - worker_logs:/app/logs
+      - /dev/shm:/dev/shm
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "python src/worker.py"]
+      interval: 60s
+      timeout: 30s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  redis_data:
+    driver: local
+  worker_data:
+    driver: local
+  worker_logs:
+    driver: local
+```
+
+**关键变化**：
+- ✅ 使用`network_mode: "host"`替代bridge网络
+- ✅ 移除所有`ports`映射配置
+- ✅ Redis直接监听宿主机端口
+- ✅ 简化健康检查
+
+---
+
+### 2. 环境变量配置
+
+#### 2.1 配置模板 (config/production.env.template)
+
+```bash
+# ========================================
+# SecretFlow生产环境配置模板 (Host网络模式)
+# ========================================
+
+# ========== 节点基础配置 ==========
+# 节点唯一标识符
+NODE_ID=node1
+
+# 节点IP地址（宿主机真实IP，用于多节点通信）
+NODE_IP=192.168.1.10
+
+# 运行环境
+APP_ENV=production
+
+# ========== Redis配置 ==========
+# Redis主机地址（host模式下使用127.0.0.1）
+REDIS_HOST=127.0.0.1
+
+# Redis端口（建议使用非标准端口避免冲突）
+REDIS_PORT=60379
+
+# Redis数据库编号
+REDIS_DB=0
+
+# Redis密码（可选，生产环境建议设置）
+REDIS_PASSWORD=
+
+# ========== Ray集群配置 ==========
+# Ray集群类型：head（头节点）或 worker（工作节点）
+RAY_NODE_TYPE=head
+
+# Ray头节点地址（工作节点需要连接到头节点）
+# 格式：<头节点IP>:<Ray端口>
+RAY_HEAD_ADDRESS=192.168.1.10:61379
+
+# 当前节点IP地址
+RAY_NODE_IP=192.168.1.10
+
+# Ray GCS端口（头节点使用）
+RAY_PORT=61379
+
+# Ray使用的CPU数量（0表示使用全部CPU）
+RAY_NUM_CPUS=0
+
+# Ray对象存储内存大小（字节）
+RAY_OBJECT_STORE_MEMORY=2000000000
+
+# ========== SecretFlow端口范围配置 ==========
+# SecretFlow通信端口范围
+# 注意：不同节点需要使用不同的端口范围避免冲突
+# 节点1: 19000-19009
+# 节点2: 19100-19109
+# 节点3: 19200-19299
+SF_PORT_RANGE_START=19000
+SF_PORT_RANGE_END=19009
+
+# SPU节点端口范围
+SPU_PORT_RANGE_START=19500
+SPU_PORT_RANGE_END=19509
+
+# HEU节点端口范围（可选）
+HEU_PORT_RANGE_START=19800
+HEU_PORT_RANGE_END=19809
+
+# ========== Celery Worker配置 ==========
+# Worker并发数（建议设置为CPU核心数的1-2倍）
+WORKER_CONCURRENCY=2
+
+# Worker主机名
+WORKER_HOSTNAME=${NODE_ID}@127.0.0.1
+
+# Worker日志级别
+CELERY_LOG_LEVEL=INFO
+
+# Worker任务队列
+WORKER_QUEUES=secretflow_queue
+
+# ========== Celery任务配置 ==========
+# 任务软超时时间（秒）
+WORKER_TASK_SOFT_TIME_LIMIT=3600
+
+# 任务硬超时时间（秒）
+WORKER_TASK_TIME_LIMIT=3900
+
+# 每个子进程最大任务数
+WORKER_MAX_TASKS_PER_CHILD=100
+
+# 预取任务倍数
+WORKER_PREFETCH_MULTIPLIER=1
+
+# ========== Celery监控端口 ==========
+CELERY_MONITOR_PORT=8088
+
+# ========== 日志配置 ==========
+LOG_LEVEL=INFO
+LOG_PATH=/app/logs
+
+# ========== 数据目录 ==========
+DATA_PATH=/app/data
+```
+
+#### 2.2 节点配置示例
+
+**节点1配置 (config/node1.env)**：
+```bash
+NODE_ID=node1
+NODE_IP=192.168.1.10
+RAY_NODE_TYPE=head
+RAY_HEAD_ADDRESS=192.168.1.10:61379
+SF_PORT_RANGE_START=19000
+SF_PORT_RANGE_END=19009
+SPU_PORT_RANGE_START=19500
+SPU_PORT_RANGE_END=19509
+HEU_PORT_RANGE_START=19800
+HEU_PORT_RANGE_END=19809
+```
+
+**节点2配置 (config/node2.env)**：
+```bash
+NODE_ID=node2
+NODE_IP=192.168.1.11
+RAY_NODE_TYPE=worker
+RAY_HEAD_ADDRESS=192.168.1.10:61379
+SF_PORT_RANGE_START=19100
+SF_PORT_RANGE_END=19109
+SPU_PORT_RANGE_START=19600
+SPU_PORT_RANGE_END=19609
+HEU_PORT_RANGE_START=19859
+HEU_PORT_RANGE_END=19899
+```
+
+---
+
+### 3. Ray启动脚本
+
+#### 3.1 Ray头节点启动脚本 (scripts/start_ray_head.sh)
+
+```bash
+#!/bin/bash
+set -e
+
+echo "🚀 启动Ray头节点..."
+
+# 检查必要的环境变量
+if [ -z "$RAY_NODE_IP" ]; then
+    echo "❌ 错误：RAY_NODE_IP环境变量未设置"
+    exit 1
+fi
+
+# 启动Ray头节点
+ray start \
+    --head \
+    --port=${RAY_PORT:-61379} \
+    --node-ip-address=${RAY_NODE_IP} \
+    --num-cpus=${RAY_NUM_CPUS:-0} \
+    --object-store-memory=${RAY_OBJECT_STORE_MEMORY:-2000000000} \
+    --include-dashboard=false \
+    --block
+
+echo "✅ Ray头节点启动成功"
+```
+
+#### 3.2 Ray工作节点启动脚本 (scripts/start_ray_worker.sh)
+
+```bash
+#!/bin/bash
+set -e
+
+echo "🚀 启动Ray工作节点..."
+
+# 检查必要的环境变量
+if [ -z "$RAY_HEAD_ADDRESS" ]; then
+    echo "❌ 错误：RAY_HEAD_ADDRESS环境变量未设置"
+    exit 1
+fi
+
+if [ -z "$RAY_NODE_IP" ]; then
+    echo "❌ 错误：RAY_NODE_IP环境变量未设置"
+    exit 1
+fi
+
+# 等待头节点就绪
+echo "⏳ 等待Ray头节点就绪..."
+max_retries=30
+retry_count=0
+
+while [ $retry_count -lt $max_retries ]; do
+    if ray health-check --address=${RAY_HEAD_ADDRESS} 2>/dev/null; then
+        echo "✅ Ray头节点已就绪"
+        break
+    fi
+    retry_count=$((retry_count + 1))
+    echo "等待中... ($retry_count/$max_retries)"
+    sleep 2
+done
+
+if [ $retry_count -eq $max_retries ]; then
+    echo "❌ 错误：无法连接到Ray头节点 ${RAY_HEAD_ADDRESS}"
+    exit 1
+fi
+
+# 启动Ray工作节点
+ray start \
+    --address=${RAY_HEAD_ADDRESS} \
+    --node-ip-address=${RAY_NODE_IP} \
+    --num-cpus=${RAY_NUM_CPUS:-0} \
+    --object-store-memory=${RAY_OBJECT_STORE_MEMORY:-2000000000} \
+    --block
+
+echo "✅ Ray工作节点启动成功"
+```
+
+#### 3.3 容器入口脚本 (scripts/entrypoint.sh)
+
+```bash
+#!/bin/bash
+set -e
+
+echo "🚀 启动SecretFlow Worker容器..."
+
+# 根据节点类型启动Ray
+if [ "$RAY_NODE_TYPE" = "head" ]; then
+    echo "📋 节点类型：Ray头节点"
+    /app/scripts/start_ray_head.sh &
+elif [ "$RAY_NODE_TYPE" = "worker" ]; then
+    echo "📋 节点类型：Ray工作节点"
+    /app/scripts/start_ray_worker.sh &
+else
+    echo "❌ 错误：未知的RAY_NODE_TYPE: $RAY_NODE_TYPE"
+    exit 1
+fi
+
+RAY_PID=$!
+
+# 等待Ray启动完成
+sleep 5
+
+# 验证Ray是否运行
+if ! ps -p $RAY_PID > /dev/null; then
+    echo "❌ Ray启动失败"
+    exit 1
+fi
+
+echo "✅ Ray启动成功"
+
+# 启动Celery Worker
+echo "🚀 启动Celery Worker..."
+exec python src/worker.py
+```
+
+---
+
+### 4. Dockerfile调整
+
+```dockerfile
+FROM python:3.10.16-slim
+
+# 设置工作目录
+WORKDIR /app
+
+# 创建必要的目录
+RUN mkdir -p /app/data /app/logs /tmp/secretflow
+
+# 安装系统依赖
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    git \
+    curl \
+    wget \
+    procps \
+    net-tools \
+    && rm -rf /var/lib/apt/lists/*
+
+# 安装Python依赖
+COPY requirements.txt /app/
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+# 复制应用代码
+COPY src/ /app/src/
+COPY scripts/ /app/scripts/
+COPY docker/ /app/docker/
+COPY main.py /app/
+COPY .env.docker /app/.env
+
+# 设置脚本执行权限
+RUN chmod +x /app/scripts/*.sh
+
+# 创建非root用户
+RUN groupadd -r secretflow && \
+    useradd -r -g secretflow -m -s /bin/bash secretflow && \
+    chown -R secretflow:secretflow /app /tmp/secretflow
+
+# 切换到非root用户
+USER secretflow
+
+# 使用入口脚本
+ENTRYPOINT ["/app/scripts/entrypoint.sh"]
+```
+
+---
+
+### 5. Worker代码调整
+
+```python
+# src/worker.py
+
+def main():
+    """启动Celery Worker主函数"""
+    logger.info("🚀 启动SecretFlow Celery Worker...")
+
+    try:
+        # 设置环境变量
+        os.environ.setdefault("CELERY_APP", "src.celery_app:celery_app")
+
+        # 验证环境
+        validate_environment()
+        
+        # ❌ 移除：不再在Worker中初始化Ray
+        # Ray已通过容器启动脚本在后台运行
+        
+        # 设置信号处理
+        setup_signal_handlers()
+
+        # 显示启动信息
+        logger.info("📋 Worker配置:")
+        logger.info(f"   节点ID: {settings.node_id}")
+        logger.info(f"   并发数: {settings.worker_concurrency}")
+        logger.info(f"   队列: {settings.worker_queues}")
+        
+        # 启动Celery Worker
+        celery_app.start()
+
+    except KeyboardInterrupt:
+        logger.info("📋 Worker被用户中断")
+    except Exception as e:
+        logger.error(f"❌ Worker启动失败: {e}")
+        sys.exit(1)
+    finally:
+        logger.info("👋 SecretFlow Worker已停止")
+```
+
+---
+
+## 🚀 部署流程
+
+### 单节点部署
+
+```bash
+# 1. 准备配置文件
+cd /path/to/secretflow_test
+cp config/production.env.template .env.production
+
+# 2. 编辑配置（设置NODE_IP等）
+vim .env.production
+
+# 3. 构建镜像
+docker build -f docker/Dockerfile -t secretflow-worker:latest .
+
+# 4. 启动服务
+docker compose -f docker/docker-compose.production.yml \
+    --env-file .env.production up -d
+
+# 5. 查看日志
+docker logs -f node1-worker
+
+# 6. 验证Ray集群
+docker exec node1-worker ray status
+```
+
+### 多节点部署
+
+**节点1（头节点）**：
+```bash
+# 使用node1.env配置
+cp config/node1.env .env.production
+docker compose -f docker/docker-compose.production.yml \
+    --env-file .env.production up -d
+```
+
+**节点2（工作节点）**：
+```bash
+# 使用node2.env配置
+cp config/node2.env .env.production
+docker compose -f docker/docker-compose.production.yml \
+    --env-file .env.production up -d
+```
+
+**验证集群**：
+```bash
+# 在任意节点执行
+docker exec node1-worker ray status
+# 应该看到2个节点
+```
+
+---
+
+## ✅ 方案优势
+
+### 1. 符合官方最佳实践
+- ✅ 使用host网络模式
+- ✅ 使用ray start命令行启动
+- ✅ 遵循官方部署文档
+
+### 2. 配置简单清晰
+- ✅ 无需复杂的端口映射
+- ✅ 环境变量配置直观
+- ✅ 易于理解和维护
+
+### 3. 性能最优
+- ✅ 无NAT转换开销
+- ✅ 直接使用宿主机网络
+- ✅ 多节点通信延迟最低
+
+### 4. 易于扩展
+- ✅ 添加新节点只需复制配置
+- ✅ 端口范围规划清晰
+- ✅ 支持水平扩展
+
+### 5. 稳定可靠
+- ✅ 避免Python 3.10兼容性问题
+- ✅ Ray独立进程运行
+- ✅ 进程隔离，互不影响
+
+---
+
+## ⚠️ 注意事项
+
+### 1. 端口管理
+- 确保宿主机端口未被占用
+- 不同节点使用不同的SecretFlow端口范围
+- 建议使用端口扫描工具检查
+
+### 2. 防火墙配置
+```bash
+# 允许Ray通信
+firewall-cmd --permanent --add-port=61379/tcp
+
+# 允许SecretFlow通信
+firewall-cmd --permanent --add-port=19000-19009/tcp
+firewall-cmd --permanent --add-port=19500-19509/tcp
+firewall-cmd --permanent --add-port=19800-19809/tcp
+
+# 重载防火墙
+firewall-cmd --reload
+```
+
+### 3. 安全建议
+- 生产环境设置Redis密码
+- 使用TLS加密节点间通信
+- 限制Ray Dashboard访问
+- 定期更新依赖包
+
+### 4. 资源限制
+虽然使用host网络，仍可通过Docker限制资源：
+```yaml
+deploy:
+  resources:
+    limits:
+      memory: 8G
+      cpus: '4'
+```
+
+---
+
+## 📊 与旧方案对比
+
+| 特性 | 旧方案(Bridge) | 新方案(Host) |
+|------|---------------|--------------|
+| 网络模式 | bridge + 端口映射 | host |
+| Ray启动 | Python API | 命令行 |
+| 端口配置 | 复杂映射 | 直接使用 |
+| 性能 | 有NAT开销 | 无开销 |
+| 多节点部署 | 复杂 | 简单 |
+| 官方推荐 | ❌ | ✅ |
+| 配置复杂度 | 高 | 低 |
+| 兼容性问题 | 有 | 无 |
+
+---
+
+## 🔍 故障排查
+
+### 常见问题
+
+**1. Ray无法启动**
+```bash
+# 检查端口占用
+netstat -tuln | grep 61379
+
+# 查看Ray日志
+docker logs node1-worker | grep ray
+```
+
+**2. 节点无法连接**
+```bash
+# 检查网络连通性
+ping 192.168.1.10
+
+# 检查Ray状态
+ray status --address=192.168.1.10:61379
+```
+
+**3. 端口冲突**
+```bash
+# 扫描端口使用情况
+nmap -p 61379,60379,19000-19009 localhost
+```
+
+---
+
+## 📝 后续任务
+
+- [ ] 实施新方案
+- [ ] 编写详细部署指南
+- [ ] 测试单节点部署
+- [ ] 测试多节点部署
+- [ ] 性能测试和优化
+- [ ] 编写运维文档
+
+---
+
+**文档版本**：v2.0  
+**创建时间**：2026年1月6日  
+**最后更新**：2026年1月6日  
+**作者**：SecretFlow部署团队
