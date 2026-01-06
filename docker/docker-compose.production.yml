@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  # Redis服务 - Celery任务队列
+  redis:
+    image: redis:7-alpine
+    container_name: ${NODE_ID}-redis
+    network_mode: "host"
+    command:
+      - redis-server
+      - --port
+      - "60379"
+      - --maxmemory
+      - "2gb"
+      - --maxmemory-policy
+      - allkeys-lru
+      - --appendonly
+      - "yes"
+      - --appendfsync
+      - everysec
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "60379", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Worker服务 - Celery + Ray
+  worker:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: secretflow-worker:latest
+    container_name: ${NODE_ID}-worker
+    network_mode: "host"
+    depends_on:
+      redis:
+        condition: service_healthy
+    env_file:
+      - ../.env.production
+    volumes:
+      - worker_data:/app/data
+      - worker_logs:/app/logs
+      - ../data:/app/data
+      - /dev/shm:/dev/shm
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "python src/worker.py"]
+      interval: 60s
+      timeout: 30s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  redis_data:
+    driver: local
+  worker_data:
+    driver: local
+  worker_logs:
+    driver: local
