@@ -2,7 +2,7 @@ services:
   # Redis 消息队列和结果后端
   secretflow-redis-test:
     image: redis:7-alpine
-    container_name: secretflow-redis
+    container_name: secretflow-redis-test
     ports:
       - "26379:6379"
     volumes:
@@ -22,7 +22,7 @@ services:
       context: ..
       dockerfile: docker/Dockerfile
     image: secretflow-worker:latest
-    container_name: secretflow-worker
+    container_name: secretflow-worker-test
     depends_on:
       secretflow-redis-test:
         condition: service_healthy
