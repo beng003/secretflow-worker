@@ -9,5 +9,6 @@
   "templater-obsidian",
   "obsidian-tasks-plugin",
   "vscode-editor",
-  "mermaid-tools"
+  "mermaid-tools",
+  "file-ignore"
 ]
