@@ -9,6 +9,7 @@ BeaverCache.*
 # C extensions
 *.so
 .env.production
+.obsidian/
 
 # Distribution / packaging
 .Python
@@ -226,3 +227,4 @@ tensorboard_logs/
 *.tar.bz2
 *.rar
 *.7z
+//

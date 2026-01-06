@@ -4,21 +4,17 @@
     "type": "split",
     "children": [
       {
-        "id": "7383800e88ae41a5",
+        "id": "d1db5eba368931ba",
         "type": "tabs",
         "children": [
           {
-            "id": "7210939e5c54b5bd",
+            "id": "37ba45f5efaf72d4",
             "type": "leaf",
             "state": {
-              "type": "markdown",
-              "state": {
-                "file": "docs/worker-api/00.worker-api.md",
-                "mode": "source",
-                "source": false
-              },
+              "type": "empty",
+              "state": {},
               "icon": "lucide-file",
-              "title": "00.worker-api"
+              "title": "新标签页"
             }
           }
         ]
@@ -78,7 +74,7 @@
       }
     ],
     "direction": "horizontal",
-    "width": 256.5
+    "width": 301.5
   },
   "right": {
     "id": "a627719a7c6c8841",
@@ -180,7 +176,7 @@
       }
     ],
     "direction": "horizontal",
-    "width": 300
+    "width": 477.5
   },
   "left-ribbon": {
     "hiddenItems": {
@@ -200,8 +196,29 @@
       "bases:创建新数据库": false
     }
   },
-  "active": "7210939e5c54b5bd",
+  "active": "17a0ce8fc1a6ee37",
   "lastOpenFiles": [
+    "docs/summary/02.task_1.3_completion_summary.md",
+    "docs/summary/05.model_save_load_summary.md",
+    "docs/summary/10.path_format_improvement.md",
+    "docs/summary/17.stats_evaluation_refactoring.md",
+    "docs/summary/15.logging_unification.md",
+    "docs/summary/12.ml_task_refactoring.md",
+    "docs/summary/08.refactoring_summary.md",
+    "docs/web_integration_guide.md",
+    "docs/start.md",
+    "docs/SecretflowProduction.md",
+    "docs/chain.md",
+    "docs/04.task_status_listener.md",
+    "docs/04.2.secretpad_work_list.md",
+    "docs/04.1.secretflow_work_list.md",
+    "docs/worker-api/01.worker_architecture.md",
+    "docs/worker-api/00.worker-api.md",
+    "docs/summary/28.project_work_summary.md",
+    "docs/summary/04.task_2.3_completion_summary.md",
+    "docs/summary/01.secretflow_task.md",
+    "scripts/send_task.py",
+    "scripts/clear_celery_queue.py",
     "src/secretflow_task/celery_tasks.py",
     "tests/README.md",
     "README.md"
