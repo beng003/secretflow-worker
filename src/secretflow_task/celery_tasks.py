@@ -50,11 +50,12 @@ class SecretFlowTask(Task):
             kwargs: 任务关键字参数
             einfo: 异常信息
         """
-        task_request_id = args[0] if args else kwargs.get("task_request_id", "unknown")
+        task_params = args[0] if args else kwargs.get("task_params", {})
+        execution_id = task_params.get("execution_id", "unknown")
 
         logger.warning(
-            f"SecretFlow任务重试: task_id={task_id}, "
-            f"request_id={task_request_id}, "
+            f"SecretFlow任务重试: celery_task_id={task_id}, "
+            f"execution_id={execution_id}, "
             f"retry_count={self.request.retries}, "
             f"reason={str(exc)}"
         )
@@ -62,10 +63,13 @@ class SecretFlowTask(Task):
         # 发送重试状态通知
         try:
             _publish_status(
-                task_request_id,
+                execution_id,
                 "RETRY",
                 {
                     "stage": "task_retrying",
+                    "task_id": task_params.get("task_id"),
+                    "subtask_id": task_params.get("subtask_id"),
+                    "execution_id": execution_id,
                     "retry_count": self.request.retries,
                     "max_retries": self.max_retries,
                     "error": str(exc),
@@ -86,11 +90,12 @@ class SecretFlowTask(Task):
             kwargs: 任务关键字参数
             einfo: 异常信息
         """
-        task_request_id = args[0] if args else kwargs.get("task_request_id", "unknown")
+        task_params = args[0] if args else kwargs.get("task_params", {})
+        execution_id = task_params.get("execution_id", "unknown")
 
         logger.error(
             f"SecretFlow任务失败: task_id={task_id}, "
-            f"request_id={task_request_id}, "
+            f"execution_id={execution_id}, "
             f"error={str(exc)}",
             exc_info=True,
         )
@@ -98,10 +103,13 @@ class SecretFlowTask(Task):
         # 发送失败状态通知（额外保障）
         try:
             _publish_status(
-                task_request_id,
+                execution_id,
                 "FAILURE",
                 {
                     "stage": "task_failed_final",
+                    "task_id": task_params.get("task_id"),
+                    "subtask_id": task_params.get("subtask_id"),
+                    "execution_id": execution_id,
                     "celery_task_id": task_id,
                     "error": str(exc),
                     "error_type": type(exc).__name__,
@@ -121,10 +129,11 @@ class SecretFlowTask(Task):
             args: 任务位置参数
             kwargs: 任务关键字参数
         """
-        task_request_id = args[0] if args else kwargs.get("task_request_id", "unknown")
+        task_params = args[0] if args else kwargs.get("task_params", {})
+        execution_id = task_params.get("execution_id", "unknown")
 
         logger.info(
-            f"SecretFlow任务成功: task_id={task_id}, request_id={task_request_id}"
+            f"SecretFlow任务成功: celery_task_id={task_id}, execution_id={execution_id}"
         )
 
 
@@ -181,7 +190,7 @@ def _validate_task_params(task_params: Dict[str, Any]) -> None:
     Raises:
         ValueError: 参数验证失败
     """
-    required_keys = ["sf_init_config", "spu_config", "task_config"]
+    required_keys = ["task_id", "subtask_id", "execution_id", "sf_init_config", "spu_config", "task_config"]
 
     for key in required_keys:
         if key not in task_params:
@@ -203,7 +212,7 @@ def _validate_task_params(task_params: Dict[str, Any]) -> None:
     track_started=True,
 )
 def execute_secretflow_celery_task(
-    self, task_request_id: str, task_params: Dict[str, Any]
+    self, task_params: Dict[str, Any]
 ) -> Dict[str, Any]:
     """SecretFlow任务的Celery包装器
 
@@ -217,8 +226,10 @@ def execute_secretflow_celery_task(
 
     Args:
         self: Celery任务实例（bind=True时自动传入）
-        task_request_id: 任务请求唯一标识符
         task_params: 任务参数字典，包含：
+            - task_id: 任务ID
+            - subtask_id: 子任务ID
+            - execution_id: 执行ID
             - sf_init_config: SecretFlow集群初始化配置
             - spu_config: SPU设备配置
             - heu_config: HEU设备配置（可选）
@@ -240,44 +251,54 @@ def execute_secretflow_celery_task(
     celery_task_id = self.request.id
 
     try:
+        # 1. 验证任务参数
+        logger.info("验证任务参数...")
+        _validate_task_params(task_params)
+
+        # 2. 提取参数
+        task_id = task_params["task_id"]
+        subtask_id = task_params["subtask_id"]
+        execution_id = task_params["execution_id"]
+        sf_init_config = task_params["sf_init_config"]
+        spu_config = task_params["spu_config"]
+        heu_config = task_params.get("heu_config", None)
+        task_config = task_params["task_config"]
+
         logger.info(
             "=" * 80 + "\n"
             "Celery SecretFlow任务开始\n"
             f"  Celery任务ID: {celery_task_id}\n"
-            f"  请求ID: {task_request_id}\n"
-            f"  任务类型: {task_params.get('task_config', {}).get('task_type', 'unknown')}\n"
+            f"  任务ID: {task_id}\n"
+            f"  子任务ID: {subtask_id}\n"
+            f"  执行ID: {execution_id}\n"
+            f"  任务类型: {task_config.get('task_type', 'unknown')}\n"
             f"  队列: {self.request.delivery_info.get('routing_key', 'unknown')}\n"
             f"  重试次数: {self.request.retries}\n" + "=" * 80
         )
 
         # 发送Celery任务开始状态
         _publish_status(
-            task_request_id,
+            execution_id,
             "RUNNING",
             {
                 "stage": "celery_task_started",
+                "task_id": task_id,
+                "subtask_id": subtask_id,
+                "execution_id": execution_id,
                 "celery_task_id": celery_task_id,
-                "task_type": task_params.get("task_config", {}).get("task_type"),
+                "task_type": task_config.get("task_type"),
                 "retry_count": self.request.retries,
                 "started_at": datetime.now().isoformat(),
             },
         )
 
-        # 1. 验证任务参数
-        logger.info("验证任务参数...")
-        _validate_task_params(task_params)
-
-        # 2. 提取参数
-        sf_init_config = task_params["sf_init_config"]
-        spu_config = task_params["spu_config"]
-        heu_config = task_params.get("heu_config", None)
-        task_config = task_params["task_config"]
-
         # 3. 更新任务状态为STARTED
         self.update_state(
             state="STARTED",
             meta={
-                "task_request_id": task_request_id,
+                "task_id": task_id,
+                "subtask_id": subtask_id,
+                "execution_id": execution_id,
                 "task_type": task_config.get("task_type"),
                 "started_at": datetime.now().isoformat(),
             },
@@ -288,7 +309,9 @@ def execute_secretflow_celery_task(
 
         try:
             result = execute_secretflow_task(
-                task_request_id=task_request_id,
+                task_id=task_id,
+                subtask_id=subtask_id,
+                execution_id=execution_id,
                 sf_init_config=sf_init_config,
                 spu_config=spu_config,
                 heu_config=heu_config,
@@ -304,10 +327,13 @@ def execute_secretflow_celery_task(
             logger.error(error_msg)
 
             _publish_status(
-                task_request_id,
+                execution_id,
                 "FAILURE",
                 {
                     "stage": "task_timeout",
+                    "task_id": task_id,
+                    "subtask_id": subtask_id,
+                    "execution_id": execution_id,
                     "celery_task_id": celery_task_id,
                     "error": error_msg,
                     "error_type": "SoftTimeLimitExceeded",
@@ -340,7 +366,9 @@ def execute_secretflow_celery_task(
         self.update_state(
             state="SUCCESS",
             meta={
-                "task_request_id": task_request_id,
+                "task_id": task_id,
+                "subtask_id": subtask_id,
+                "execution_id": execution_id,
                 "result": final_result,
                 "completed_at": datetime.now().isoformat(),
             },
@@ -350,7 +378,9 @@ def execute_secretflow_celery_task(
             "=" * 80 + "\n"
             "Celery SecretFlow任务完成\n"
             f"  Celery任务ID: {celery_task_id}\n"
-            f"  请求ID: {task_request_id}\n"
+            f"  任务ID: {task_id}\n"
+            f"  子任务ID: {subtask_id}\n"
+            f"  执行ID: {execution_id}\n"
             f"  总耗时: {celery_execution_time:.2f}秒\n" + "=" * 80
         )
 
@@ -380,7 +410,9 @@ def execute_secretflow_celery_task(
 
         logger.error(
             f"Celery SecretFlow任务失败: celery_id={celery_task_id}, "
-            f"request_id={task_request_id}, "
+            f"task_id={task_params.get('task_id', 'unknown')}, "
+            f"subtask_id={task_params.get('subtask_id', 'unknown')}, "
+            f"execution_id={task_params.get('execution_id', 'unknown')}, "
             f"error={error_type}: {error_msg}, "
             f"execution_time={execution_time:.2f}秒",
             exc_info=True,
@@ -390,7 +422,9 @@ def execute_secretflow_celery_task(
         self.update_state(
             state="FAILURE",
             meta={
-                "task_request_id": task_request_id,
+                "task_id": task_params.get("task_id"),
+                "subtask_id": task_params.get("subtask_id"),
+                "execution_id": task_params.get("execution_id"),
                 "error": error_msg,
                 "error_type": error_type,
                 "execution_time": execution_time,
@@ -404,7 +438,9 @@ def execute_secretflow_celery_task(
 
 # 便捷函数：提交SecretFlow任务
 def submit_secretflow_task(
-    task_request_id: str,
+    task_id: str,
+    subtask_id: str,
+    execution_id: str,
     sf_init_config: Dict[str, Any],
     spu_config: Dict[str, Any],
     heu_config: Optional[Dict[str, Any]],
@@ -415,7 +451,9 @@ def submit_secretflow_task(
     """提交SecretFlow任务到Celery队列
 
     Args:
-        task_request_id: 任务请求ID
+        task_id: 大任务/DAG ID
+        subtask_id: 子任务/节点 ID
+        execution_id: 本次执行记录 ID
         sf_init_config: SecretFlow集群配置
         spu_config: SPU设备配置
         heu_config: HEU设备配置（可选）
@@ -427,6 +465,9 @@ def submit_secretflow_task(
         str: Celery任务ID
     """
     task_params = {
+        "task_id": task_id,
+        "subtask_id": subtask_id,
+        "execution_id": execution_id,
         "sf_init_config": sf_init_config,
         "spu_config": spu_config,
         "heu_config": heu_config,
@@ -435,7 +476,7 @@ def submit_secretflow_task(
 
     # 提交任务
     async_result = execute_secretflow_celery_task.apply_async(
-        args=[task_request_id, task_params],
+        args=[task_params],
         countdown=countdown,
         eta=eta,
         queue="secretflow_queue",
@@ -444,7 +485,9 @@ def submit_secretflow_task(
     logger.info(
         f"SecretFlow任务已提交: "
         f"celery_id={async_result.id}, "
-        f"request_id={task_request_id}, "
+        f"task_id={task_id}, "
+        f"subtask_id={subtask_id}, "
+        f"execution_id={execution_id}, "
         f"task_type={task_config.get('task_type')}"
     )
 

@@ -75,10 +75,15 @@ if __name__ == "__main__":
             queue="secretflow_queue"
         )
     
-    # 示例：发送 PSI 任务
+    # 示例：发送 PSI 任务（使用新的API结构）
     elif len(sys.argv) > 1 and sys.argv[1] == "psi":
-        task_id = "psi-cli-test-001"
         task_params = {
+            # 新的三个ID字段
+            "task_id": "psi-dag-12345",
+            "subtask_id": "psi-node-67890", 
+            "execution_id": "psi-exec-11111",
+            
+            # 原有配置保持不变
             "sf_init_config": {
                 "parties": ["alice", "bob"],
                 "address": "local"
@@ -117,7 +122,7 @@ if __name__ == "__main__":
         
         result = send_task(
             "tasks.secretflow.execute_task",
-            args=[task_id, task_params],
+            args=[task_params],  # 现在只发送一个参数
             queue="secretflow_queue"
         )
     

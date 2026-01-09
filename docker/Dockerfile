@@ -56,7 +56,6 @@ RUN pip install --no-cache-dir --upgrade pip -i https://pypi.tuna.tsinghua.edu.c
 COPY src/ /app/src/
 COPY scripts/ /app/scripts/
 COPY docker/ /app/docker/
-COPY main.py /app/
 COPY .env.secretflow /app/
 
 # 设置脚本执行权限

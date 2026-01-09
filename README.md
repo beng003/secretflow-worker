@@ -21,6 +21,11 @@ SecretFlow Worker 是一个基于 SecretFlow 框架的分布式隐私计算服�
 - **Redis 消息队列**：高性能任务分发和状态同步
 - **Docker 容器化部署**：开箱即用，易于扩展
 
+### 🆔 任务标识系统
+- **三级ID体系**：支持 `task_id`（DAG任务）、`subtask_id`（子任务节点）、`execution_id`（执行实例）
+- **精确追踪**：每个执行实例都有唯一标识，便于监控和调试
+- **层次化管理**：支持复杂任务流的精细化管理和状态跟踪
+
 ### 🔄 任务状态监听
 - **实时状态更新**：通过 Redis 发布订阅实时推送任务状态
 - **跨容器通信**：Worker 容器与 Web 容器无缝对接
@@ -161,6 +166,49 @@ python scripts/send_task.py psi
 
 # 发送Hello测试任务
 python scripts/send_task.py hello
+```
+
+## 新版API结构（v2.0）
+
+### 任务参数结构
+
+新版API使用三级ID体系替代原来的单一 `task_request_id`：
+
+```python
+{
+    "task_id": "psi-dag-12345",        # DAG任务ID
+    "subtask_id": "psi-node-67890",    # 子任务节点ID  
+    "execution_id": "psi-exec-11111",   # 执行实例ID
+    "sf_init_config": { ... },         # SecretFlow初始化配置
+    "spu_config": { ... },             # SPU配置
+    "task_config": { ... }             # 任务具体配置
+}
+```
+
+### ID字段说明
+
+- **`task_id`**：标识一个完整的DAG任务或业务任务
+- **`subtask_id`**：标识DAG中的具体任务节点
+- **`execution_id`**：标识任务的具体执行实例（支持重试和多次执行）
+
+### 任务结果结构
+
+任务执行完成后，结果中会包含所有三个ID字段：
+
+```python
+{
+    "status": "success",
+    "result": { ... },                   # 任务具体结果
+    "performance_metrics": { ... },     # 性能指标
+    "task_metadata": {
+        "task_id": "psi-dag-12345",
+        "subtask_id": "psi-node-67890", 
+        "execution_id": "psi-exec-11111",
+        "task_type": "psi",
+        "started_at": "2026-01-09T14:02:45.870758",
+        "completed_at": "2026-01-09T14:02:57.869345"
+    }
+}
 ```
 
 ### 本地开发

@@ -68,7 +68,9 @@ def _collect_performance_metrics(
 
 
 def execute_secretflow_task(
-    task_request_id: str,
+    task_id: str,
+    subtask_id: str,
+    execution_id: str,
     sf_init_config: Dict[str, Any],
     spu_config: Dict[str, Any],
     heu_config: Dict[str, Any],
@@ -86,7 +88,9 @@ def execute_secretflow_task(
     5. 清理资源（自动）
 
     Args:
-        task_request_id: 任务请求唯一标识符
+        task_id: 大任务/DAG ID
+        subtask_id: 子任务/节点 ID  
+        execution_id: 本次执行记录 ID
         sf_init_config: SecretFlow集群初始化配置
             - parties: 参与方列表 ['alice', 'bob']
             - address: Ray集群地址或'local'
@@ -120,17 +124,22 @@ def execute_secretflow_task(
         logger.info(
             "=" * 80 + "\n"
             "SecretFlow任务开始执行\n"
-            f"  任务ID: {task_request_id}\n"
+            f"  任务ID: {task_id}\n"
+            f"  子任务ID: {subtask_id}\n"
+            f"  执行ID: {execution_id}\n"
             f"  任务类型: {task_config.get('task_type', 'unknown')}\n"
             f"  开始时间: {datetime.now().isoformat()}\n" + "=" * 80
         )
 
         # 发送任务开始状态
         _publish_status(
-            task_request_id,
+            execution_id,
             "RUNNING",
             {
                 "stage": "task_started",
+                "task_id": task_id,
+                "subtask_id": subtask_id,
+                "execution_id": execution_id,
                 "task_type": task_config.get("task_type"),
                 "started_at": datetime.now().isoformat(),
                 "progress": 0.0,
@@ -144,7 +153,7 @@ def execute_secretflow_task(
         cluster_init_start = time.time()
 
         _publish_status(
-            task_request_id, "RUNNING", {"stage": "cluster_init", "progress": 0.1}
+            execution_id, "RUNNING", {"stage": "cluster_init", "progress": 0.1}
         )
 
         cluster_initializer = SecretFlowClusterInitializer()
@@ -155,7 +164,7 @@ def execute_secretflow_task(
         logger.info(f"  ✓ 集群初始化完成，耗时: {cluster_init_time:.2f}秒")
 
         _publish_status(
-            task_request_id,
+            execution_id,
             "RUNNING",
             {
                 "stage": "cluster_initialized",
@@ -171,7 +180,7 @@ def execute_secretflow_task(
         device_init_start = time.time()
 
         _publish_status(
-            task_request_id, "RUNNING", {"stage": "device_creation", "progress": 0.3}
+            execution_id, "RUNNING", {"stage": "device_creation", "progress": 0.3}
         )
 
         device_manager = DeviceManager.get_instance()
@@ -193,7 +202,7 @@ def execute_secretflow_task(
         )
 
         _publish_status(
-            task_request_id,
+            execution_id,
             "RUNNING",
             {
                 "stage": "devices_initialized",
@@ -217,7 +226,7 @@ def execute_secretflow_task(
         logger.info(f"  任务类型: {task_type}")
 
         _publish_status(
-            task_request_id,
+            execution_id,
             "RUNNING",
             {"stage": "task_execution", "task_type": task_type, "progress": 0.5},
         )
@@ -259,7 +268,9 @@ def execute_secretflow_task(
             "result": algorithm_result,
             "performance_metrics": performance_metrics,
             "task_metadata": {
-                "task_request_id": task_request_id,
+                "task_id": task_id,
+                "subtask_id": subtask_id,
+                "execution_id": execution_id,
                 "task_type": task_type,
                 "started_at": datetime.fromtimestamp(start_time).isoformat(),
                 "completed_at": datetime.now().isoformat(),
@@ -269,10 +280,13 @@ def execute_secretflow_task(
 
         # 发送任务成功状态
         _publish_status(
-            task_request_id,
+            execution_id,
             "SUCCESS",
             {
                 "stage": "task_completed",
+                "task_id": task_id,
+                "subtask_id": subtask_id,
+                "execution_id": execution_id,
                 "result": algorithm_result,
                 "performance_metrics": performance_metrics,
                 "completed_at": datetime.now().isoformat(),
@@ -283,7 +297,9 @@ def execute_secretflow_task(
         logger.info(
             "\n" + "=" * 80 + "\n"
             "SecretFlow任务执行成功\n"
-            f"  任务ID: {task_request_id}\n"
+            f"  任务ID: {task_id}\n"
+            f"  子任务ID: {subtask_id}\n"
+            f"  执行ID: {execution_id}\n"
             f"  总耗时: {performance_metrics['total_execution_time']}秒\n"
             f"  完成时间: {datetime.now().isoformat()}\n" + "=" * 80
         )
@@ -299,7 +315,9 @@ def execute_secretflow_task(
         logger.error(
             "\n" + "=" * 80 + "\n"
             "SecretFlow任务执行失败\n"
-            f"  任务ID: {task_request_id}\n"
+            f"  任务ID: {task_id}\n"
+            f"  子任务ID: {subtask_id}\n"
+            f"  执行ID: {execution_id}\n"
             f"  错误类型: {error_type}\n"
             f"  错误信息: {error_msg}\n"
             f"  已执行时间: {execution_time:.2f}秒\n" + "=" * 80,
@@ -308,10 +326,13 @@ def execute_secretflow_task(
 
         # 发送任务失败状态
         _publish_status(
-            task_request_id,
+            execution_id,
             "FAILURE",
             {
                 "stage": "task_failed",
+                "task_id": task_id,
+                "subtask_id": subtask_id,
+                "execution_id": execution_id,
                 "error": error_msg,
                 "error_type": error_type,
                 "execution_time": execution_time,
@@ -325,7 +346,7 @@ def execute_secretflow_task(
     finally:
         # 资源清理
         try:
-            logger.info(f"开始清理任务资源，task_id={task_request_id}")
+            logger.info(f"开始清理任务资源，execution_id={execution_id}")
 
             # 清理设备
             if device_manager:
@@ -337,7 +358,7 @@ def execute_secretflow_task(
                 cluster_initializer.shutdown_cluster()
                 logger.info("集群关闭完成")
 
-            logger.info(f"任务资源清理完成，task_id={task_request_id}")
+            logger.info(f"任务资源清理完成，execution_id={execution_id}")
 
         except Exception as e:
             # 资源清理失败不影响主流程，但需记录

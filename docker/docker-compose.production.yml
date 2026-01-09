@@ -1,4 +1,4 @@
-version: '3.8'
+name: secretflow-worker-test
 
 services:
   # Redis服务 - Celery任务队列
@@ -33,7 +33,7 @@ services:
       context: ..
       dockerfile: docker/Dockerfile
     image: secretflow-worker:latest
-    container_name: ${NODE_ID}-worker
+    container_name: ${NODE_ID}-1worker
     network_mode: "host"
     depends_on:
       redis:

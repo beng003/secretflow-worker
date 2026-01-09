@@ -5,25 +5,31 @@
 """
 
 
-def _publish_status(task_request_id: str, status: str, data: dict = None) -> None:
+def _publish_status(execution_id: str, status: str, data: dict = None) -> None:
     """SecretFlow任务的统一状态上报接口
 
     简单的状态上报，失败不影响主任务
 
     Args:
-        task_request_id: 任务请求ID
+        execution_id: 执行ID (本次执行记录的唯一标识符)
         status: 任务状态 (如: RUNNING, SUCCESS, FAILURE)
-        data: 状态相关数据，可选
+        data: 状态相关数据，可选，应包含task_id, subtask_id, execution_id等信息
     """
     try:
+        # 从data中提取ID信息，为向后兼容性保留task_request_id字段
+        task_id = data.get("task_id") if data else None
+        subtask_id = data.get("subtask_id") if data else None
+        
         # 构造状态事件数据
         event_data = {
-            "task_request_id": task_request_id,
+            "execution_id": execution_id,
+            "task_id": task_id,
+            "subtask_id": subtask_id,
             "status": status,
             "timestamp": _get_timestamp(),
             "data": data or {},
             "worker_container": _get_worker_id(),
-            "task_name": "task.secretflow",
+            "task_name": "tasks.secretflow.execute_task",
         }
 
         # 发布到Redis

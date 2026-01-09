@@ -1,3 +1,5 @@
+name: secretflow-worker-test
+
 services:
   # Redis 消息队列和结果后端
   secretflow-redis-test:
