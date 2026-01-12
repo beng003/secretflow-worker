@@ -94,7 +94,7 @@ def execute_regression_eval(devices: Dict[str, PYU], task_config: Dict) -> Dict:
             mape_value = evaluator.mean_abs_percent_error()
             metrics["mape"] = float(mape_value) if mape_value is not None else None
         except Exception as e:
-            logger.warning(f"无法计算MAPE: {e}")
+            logger.warning("无法计算MAPE: %s", e)
             metrics["mape"] = None
         
         # R² Score
@@ -106,7 +106,7 @@ def execute_regression_eval(devices: Dict[str, PYU], task_config: Dict) -> Dict:
             explained_var = evaluator.explained_variance_score()
             metrics["explained_variance"] = float(explained_var) if explained_var is not None else None
         except Exception as e:
-            logger.warning(f"无法计算explained_variance: {e}")
+            logger.warning("无法计算explained_variance: %s", e)
             metrics["explained_variance"] = None
 
         # 保存评估报告
@@ -133,5 +133,5 @@ def execute_regression_eval(devices: Dict[str, PYU], task_config: Dict) -> Dict:
         return result
 
     except Exception as e:
-        logger.error(f"回归模型评估任务执行失败: {e}", exc_info=True)
+        logger.error("回归模型评估任务执行失败", exc_info=True)
         raise RuntimeError(f"回归模型评估任务执行失败: {str(e)}") from e

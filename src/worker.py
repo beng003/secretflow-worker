@@ -44,7 +44,7 @@ def validate_environment():
 
         logger.info("Redis连接正常")
     except Exception as e:
-        logger.warning(f"Redis连接检查失败: {e}")
+        logger.warning("Redis连接检查失败: %s", e)
         # 不抛出异常，因为启动时可能Redis还未完全就绪
 
     logger.info("环境验证完成")

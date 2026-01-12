@@ -114,7 +114,7 @@ def execute_biclassification_eval(devices: Dict[str, PYU], task_config: Dict) ->
                 "false_negative": int(confusion_matrix[3]),
             }
         except Exception as e:
-            logger.warning(f"无法获取混淆矩阵: {e}")
+            logger.warning("无法获取混淆矩阵: %s", e)
             metrics["confusion_matrix"] = None
 
         # 保存评估报告
@@ -142,5 +142,5 @@ def execute_biclassification_eval(devices: Dict[str, PYU], task_config: Dict) ->
         return result
 
     except Exception as e:
-        logger.error(f"二分类模型评估任务执行失败: {e}", exc_info=True)
+        logger.error("二分类模型评估任务执行失败", exc_info=True)
         raise RuntimeError(f"二分类模型评估任务执行失败: {str(e)}") from e

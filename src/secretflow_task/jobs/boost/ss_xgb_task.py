@@ -330,7 +330,7 @@ def execute_ss_xgboost(devices: Dict[str, PYU], task_config: Dict) -> Dict:
         return result
 
     except Exception as e:
-        logger.error(f"SS-XGBoost训练任务执行失败: {e}", exc_info=True)
+        logger.error("SS-XGBoost训练任务执行失败", exc_info=True)
         raise RuntimeError(f"SS-XGBoost训练任务执行失败: {str(e)}") from e
 
 
@@ -473,5 +473,5 @@ def execute_ss_xgb_predict(devices: Dict[str, PYU], task_config: Dict) -> Dict:
         return result
 
     except Exception as e:
-        logger.error(f"SS-XGBoost预测任务执行失败: {e}", exc_info=True)
+        logger.error("SS-XGBoost预测任务执行失败", exc_info=True)
         raise RuntimeError(f"SS-XGBoost预测任务执行失败: {str(e)}") from e

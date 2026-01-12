@@ -362,4 +362,4 @@ def execute_secretflow_task(
 
         except Exception as e:
             # 资源清理失败不影响主流程，但需记录
-            logger.error(f"资源清理失败: {e}", exc_info=True)
+            logger.error("资源清理失败", exc_info=True)

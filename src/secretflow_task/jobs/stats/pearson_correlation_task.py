@@ -109,5 +109,5 @@ def execute_pearson_correlation(devices: Dict[str, PYU], task_config: Dict) -> D
         return result
 
     except Exception as e:
-        logger.error(f"Pearson相关性分析任务执行失败: {e}", exc_info=True)
+        logger.error("Pearson相关性分析任务执行失败", exc_info=True)
         raise RuntimeError(f"Pearson相关性分析任务执行失败: {str(e)}") from e

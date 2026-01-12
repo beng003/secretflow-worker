@@ -461,10 +461,10 @@ def execute_ss_logistic_regression(devices: Dict[str, PYU], task_config: Dict) -
         return result
 
     except ValueError as e:
-        logger.error(f"SS-LR任务配置错误: {e}")
+        logger.error("SS-LR任务配置错误: %s", e)
         raise
     except Exception as e:
-        logger.error(f"SS-LR任务执行失败: {e}", exc_info=True)
+        logger.error("SS-LR任务执行失败", exc_info=True)
         raise RuntimeError(f"SS-LR任务执行失败: {str(e)}") from e
 
 
@@ -612,5 +612,5 @@ def execute_ss_lr_predict(devices: Dict[str, PYU], task_config: Dict) -> Dict:
         return result
 
     except Exception as e:
-        logger.error(f"SS-LR预测任务执行失败: {e}", exc_info=True)
+        logger.error("SS-LR预测任务执行失败", exc_info=True)
         raise RuntimeError(f"SS-LR预测任务执行失败: {str(e)}") from e

@@ -78,7 +78,7 @@ class SecretFlowTask(Task):
                 },
             )
         except Exception as e:
-            logger.error(f"发送重试状态失败: {e}")
+            logger.error("发送重试状态失败: %s", e)
 
     def on_failure(self, exc, task_id, args, kwargs, einfo):
         """任务失败时的回调
@@ -118,7 +118,7 @@ class SecretFlowTask(Task):
                 },
             )
         except Exception as e:
-            logger.error(f"发送失败状态失败: {e}")
+            logger.error("发送失败状态失败: %s", e)
 
     def on_success(self, retval, task_id, args, kwargs):
         """任务成功时的回调

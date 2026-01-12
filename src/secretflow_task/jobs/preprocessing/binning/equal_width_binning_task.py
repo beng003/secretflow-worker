@@ -100,5 +100,5 @@ def execute_equal_width_binning(devices: Dict[str, PYU], task_config: Dict) -> D
         return result
 
     except Exception as e:
-        logger.error(f"EqualWidthBinning任务执行失败: {e}", exc_info=True)
+        logger.error("EqualWidthBinning任务执行失败", exc_info=True)
         raise RuntimeError(f"EqualWidthBinning任务执行失败: {str(e)}") from e

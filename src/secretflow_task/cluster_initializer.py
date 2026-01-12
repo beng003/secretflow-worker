@@ -116,7 +116,7 @@ class SecretFlowClusterInitializer:
             logger.info("SecretFlow集群已关闭")
 
         except Exception as e:
-            logger.error(f"SecretFlow集群关闭时发生错误: {e}")
+            logger.error("SecretFlow集群关闭时发生错误: %s", e)
             # 即使关闭失败也标记为未初始化
             self._cluster_initialized = False
 

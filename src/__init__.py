@@ -168,7 +168,7 @@ class TaskRegistry:
                 "timestamp": datetime.now().isoformat(),
             }
             self.load_errors.append(error_info)
-            logger.warning(f"模块 {module_path} 导入失败: {e}")
+            logger.warning("模块 %s 导入失败: %s", module_path, e)
             return 0
 
         except Exception as e:
@@ -179,7 +179,7 @@ class TaskRegistry:
                 "timestamp": datetime.now().isoformat(),
             }
             self.load_errors.append(error_info)
-            logger.error(f"模块 {module_path} 任务发现失败: {e}")
+            logger.error("模块 %s 任务发现失败: %s", module_path, e)
             return 0
 
     def load_all_tasks(self) -> dict[str, Any]:
@@ -213,7 +213,7 @@ class TaskRegistry:
             except Exception as e:
                 stats["failed_modules"] += 1
                 stats["load_errors"].append({"module": module_path, "error": str(e)})
-                logger.error(f"加载模块 {module_path} 失败: {e}")
+                logger.error("加载模块 %s 失败: %s", module_path, e)
 
         logger.info(
             f"任务模块加载完成: "
@@ -388,7 +388,7 @@ class TaskRegistry:
         except Exception as e:
             health_status["status"] = "error"
             health_status["issues"].append(f"健康检查执行失败: {str(e)}")
-            logger.error(f"任务注册系统健康检查失败: {e}")
+            logger.error("任务注册系统健康检查失败: %s", e)
 
         return health_status
 

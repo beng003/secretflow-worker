@@ -109,5 +109,5 @@ def execute_table_statistics(devices: Dict[str, PYU], task_config: Dict) -> Dict
         return result
 
     except Exception as e:
-        logger.error(f"表统计分析任务执行失败: {e}", exc_info=True)
+        logger.error("表统计分析任务执行失败", exc_info=True)
         raise RuntimeError(f"表统计分析任务执行失败: {str(e)}") from e

@@ -114,7 +114,7 @@ class DeviceManager:
                     logger.info(f"成功创建PYU设备: {party}")
 
                 except Exception as e:
-                    logger.error(f"创建PYU设备 {party} 失败: {e}")
+                    logger.error("创建PYU设备 %s 失败: %s", party, e)
                     continue
 
             # 记录初始化时间
@@ -125,7 +125,7 @@ class DeviceManager:
             return pyu_devices
 
         except Exception as e:
-            logger.error(f"Failed to create PYU devices: {e}")
+            logger.error("Failed to create PYU devices: %s", e)
             # 记录初始化失败
             init_time = time.time() - start_time
             self._device_init_times["pyu_failed"] = init_time
@@ -165,7 +165,7 @@ class DeviceManager:
             return spu_device
 
         except Exception as e:
-            logger.error(f"创建SPU设备失败: {e}", exc_info=True)
+            logger.error("创建SPU设备失败", exc_info=True)
             # 记录初始化失败
             init_time = time.time() - start_time
             self._device_init_times[f"{device_type}_failed"] = init_time
@@ -194,7 +194,7 @@ class DeviceManager:
             return heu_device
 
         except Exception as e:
-            logger.error(f"Failed to create HEU device: {e}")
+            logger.error("Failed to create HEU device: %s", e)
             # 记录初始化失败
             init_time = time.time() - start_time
             self._device_init_times[f"{device_type}_failed"] = init_time
@@ -210,7 +210,7 @@ class DeviceManager:
                     logger.info(f"成功关闭设备: {device_name}")
             except Exception as e:
                 # 记录清理错误但不抛出异常
-                logger.error(f"Failed to cleanup device {device_name}: {e}")
+                logger.error("Failed to cleanup device %s: %s", device_name, e)
 
         # 清空设备字典
         self._devices.clear()

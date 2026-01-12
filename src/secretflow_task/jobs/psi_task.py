@@ -100,7 +100,7 @@ def _count_csv_lines(file_path: str) -> int:
             line_count = sum(1 for _ in f)
             return max(0, line_count - 1)
     except Exception as e:
-        logger.error(f"统计文件行数失败: {file_path}, 错误: {e}")
+        logger.error(f"统计文件行数失败: {file_path}, 错误: %s", e)
         return 0
 
 
@@ -232,8 +232,8 @@ def execute_psi(
         return result
 
     except ValueError as e:
-        logger.error(f"PSI任务配置错误: {e}")
+        logger.error("PSI任务配置错误: %s", e)
         raise
     except Exception as e:
-        logger.error(f"PSI任务执行失败: {e}", exc_info=True)
+        logger.error("PSI任务执行失败", exc_info=True)
         raise RuntimeError(f"PSI任务执行失败: {str(e)}") from e

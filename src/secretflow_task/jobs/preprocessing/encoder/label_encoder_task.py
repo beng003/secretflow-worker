@@ -141,8 +141,8 @@ def execute_label_encoder(devices: Dict[str, PYU], task_config: Dict) -> Dict:
         return result
 
     except ValueError as e:
-        logger.error(f"LabelEncoder任务配置错误: {e}")
+        logger.error("LabelEncoder任务配置错误: %s", e)
         raise
     except Exception as e:
-        logger.error(f"LabelEncoder任务执行失败: {e}", exc_info=True)
+        logger.error("LabelEncoder任务执行失败", exc_info=True)
         raise RuntimeError(f"LabelEncoder任务执行失败: {str(e)}") from e

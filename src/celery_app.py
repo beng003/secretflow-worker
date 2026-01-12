@@ -58,7 +58,7 @@ def validate_celery_setup():
                 __import__(module_path)
                 logger.debug(f"✅ 任务模块 {module_path} 导入成功")
             except ImportError as e:
-                logger.warning(f"⚠️ 任务模块 {module_path} 导入失败: {e}")
+                logger.warning("⚠️ 任务模块 %s 导入失败: %s", module_path, e)
 
         # 3. 验证队列配置
         queue_names = [q.name for q in celery_config.task_queues]
@@ -75,7 +75,7 @@ def validate_celery_setup():
         return True
 
     except Exception as e:
-        logger.error(f"❌ Celery配置验证失败: {e}")
+        logger.error("❌ Celery配置验证失败: %s", e)
         return False
 
 import importlib
