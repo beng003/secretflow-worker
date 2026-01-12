@@ -47,6 +47,9 @@ class SecretFlowTaskService:
     
     def submit_psi_task(
         self,
+        task_id: str,
+        subtask_id: str,
+        execution_id: str,
         parties: list,
         keys: Dict[str, list],
         input_paths: Dict[str, str],
@@ -57,12 +60,24 @@ class SecretFlowTaskService:
         """
         提交 PSI 任务
         
-        Returns:
-            task_id: Celery 任务 ID
-        """
-        task_request_id = f"psi-{uuid.uuid4().hex[:8]}"
+        Args:
+            task_id: 归属的大任务/DAG ID (从数据库获取)
+            subtask_id: 子任务/节点 ID (从数据库获取)
+            execution_id: 本次执行记录 ID (从数据库获取)
+            parties: 参与方列表
+            keys: 各方用于求交的键列
+            input_paths: 各方输入数据路径
+            output_paths: 各方输出数据路径
+            receiver: 接收结果的参与方
+            protocol: PSI协议
         
+        Returns:
+            celery_task_id: Celery 任务 ID
+        """
         task_params = {
+            "task_id": task_id,
+            "subtask_id": subtask_id,
+            "execution_id": execution_id,
             "sf_init_config": {
                 "parties": parties,
                 "address": "local"  # 生产环境使用集群模式
@@ -93,7 +108,7 @@ class SecretFlowTaskService:
         # 发送任务到 Worker
         result = self.celery_app.send_task(
             "tasks.secretflow.execute_task",
-            args=[task_request_id, task_params],
+            args=[task_params],
             queue="secretflow_queue"
         )
         
@@ -113,6 +128,9 @@ router = APIRouter(prefix="/api/v1/secretflow", tags=["SecretFlow"])
 
 class PSITaskRequest(BaseModel):
     """PSI 任务请求"""
+    task_id: str  # 归属的大任务/DAG ID
+    subtask_id: str  # 子任务/节点 ID
+    execution_id: str  # 本次执行记录 ID
     parties: List[str]
     keys: Dict[str, List[str]]
     input_paths: Dict[str, str]
@@ -131,7 +149,10 @@ async def submit_psi_task(
         validate_psi_request(request)
         
         # 2. 提交任务
-        task_id = task_service.submit_psi_task(
+        celery_task_id = task_service.submit_psi_task(
+            task_id=request.task_id,
+            subtask_id=request.subtask_id,
+            execution_id=request.execution_id,
             parties=request.parties,
             keys=request.keys,
             input_paths=request.input_paths,
@@ -140,12 +161,21 @@ async def submit_psi_task(
             protocol=request.protocol
         )
         
-        # 3. 保存任务记录到数据库
-        await save_task_record(task_id, request)
+        # 3. 保存任务记录到数据库（关联3个ID）
+        await save_task_record(
+            celery_task_id=celery_task_id,
+            task_id=request.task_id,
+            subtask_id=request.subtask_id,
+            execution_id=request.execution_id,
+            request=request
+        )
         
         # 4. 返回任务 ID
         return {
-            "task_id": task_id,
+            "celery_task_id": celery_task_id,
+            "task_id": request.task_id,
+            "subtask_id": request.subtask_id,
+            "execution_id": request.execution_id,
             "status": "PENDING",
             "message": "任务已提交"
         }
@@ -158,9 +188,13 @@ async def submit_psi_task(
 
 **关键要点**：
 
-1. **文件路径**：使用容器内绝对路径（如 `/app/data/xxx.csv`）
-2. **参与方名称**：保持一致（alice, bob 等）
-3. **集群配置**：
+1. **3个必需ID**：
+   - `task_id`：归属的大任务/DAG ID（从数据库获取）
+   - `subtask_id`：子任务/节点 ID（从数据库获取）
+   - `execution_id`：本次执行记录 ID（从数据库获取，原 task_request_id）
+2. **文件路径**：使用容器内绝对路径（如 `/app/data/xxx.csv`）
+3. **参与方名称**：保持一致（alice, bob 等）
+4. **集群配置**：
    - 开发/测试：使用本地模式 `"address": "local"`
    - 生产环境：使用集群模式，配置各参与方地址
 
@@ -227,13 +261,17 @@ class TaskStatusListener:
     
     async def _handle_status_event(self, event: Dict[str, Any]):
         """处理任务状态事件"""
-        task_request_id = event["task_request_id"]
+        task_id = event["task_id"]
+        subtask_id = event["subtask_id"]
+        execution_id = event["execution_id"]
         status = event["status"]
         data = event["data"]
         
         # 调用数据库服务更新任务状态
         await update_task_status(
-            task_request_id=task_request_id,
+            task_id=task_id,
+            subtask_id=subtask_id,
+            execution_id=execution_id,
             status=status,
             result_data=data,
             updated_at=datetime.now()
@@ -246,7 +284,9 @@ Worker 发布的状态事件格式：
 
 ```json
 {
-    "task_request_id": "psi-abc123",
+    "task_id": "dag-12345-abcde",
+    "subtask_id": "node-67890-fghij",
+    "execution_id": "exec-11111-klmno",
     "status": "RUNNING|SUCCESS|FAILURE|RETRY",
     "timestamp": "2026-01-07T00:00:00.000000Z",
     "data": {
@@ -352,21 +392,21 @@ class TaskChainService:
         # 1. 数据预处理任务
         preprocess_task = self.celery_app.signature(
             "tasks.secretflow.execute_task",
-            args=["preprocess-001", preprocess_params],
+            args=[preprocess_params],  # preprocess_params 包含 task_id, subtask_id, execution_id
             queue="secretflow_queue"
         )
         
         # 2. 模型训练任务
         train_task = self.celery_app.signature(
             "tasks.secretflow.execute_task",
-            args=["train-001", train_params],
+            args=[train_params],  # train_params 包含 task_id, subtask_id, execution_id
             queue="secretflow_queue"
         )
         
         # 3. 模型评估任务
         eval_task = self.celery_app.signature(
             "tasks.secretflow.execute_task",
-            args=["eval-001", eval_params],
+            args=[eval_params],  # eval_params 包含 task_id, subtask_id, execution_id
             queue="secretflow_queue"
         )
         
@@ -389,10 +429,10 @@ def create_parallel_psi_workflow(self, psi_tasks_params):
     psi_tasks = [
         self.celery_app.signature(
             "tasks.secretflow.execute_task",
-            args=[f"psi-{i}", params],
+            args=[params],  # params 包含 task_id, subtask_id, execution_id
             queue="secretflow_queue"
         )
-        for i, params in enumerate(psi_tasks_params)
+        for params in psi_tasks_params
     ]
     
     # 并行执行
@@ -409,20 +449,25 @@ def create_parallel_psi_workflow(self, psi_tasks_params):
 ```sql
 CREATE TABLE secretflow_tasks (
     id SERIAL PRIMARY KEY,
-    task_id VARCHAR(100) UNIQUE NOT NULL,  -- Celery 任务 ID
-    task_request_id VARCHAR(100),           -- 业务任务 ID
-    task_type VARCHAR(50) NOT NULL,         -- 任务类型（psi, ss_lr等）
-    status VARCHAR(20) NOT NULL,            -- 任务状态
-    params JSONB,                           -- 任务参数
-    result JSONB,                           -- 任务结果
-    error_message TEXT,                     -- 错误信息
-    performance_metrics JSONB,              -- 性能指标
+    celery_task_id VARCHAR(100) UNIQUE NOT NULL,  -- Celery 任务 ID
+    task_id VARCHAR(100) NOT NULL,                -- 归属的大任务/DAG ID
+    subtask_id VARCHAR(100) NOT NULL,             -- 子任务/节点 ID
+    execution_id VARCHAR(100) UNIQUE NOT NULL,    -- 本次执行记录 ID
+    task_type VARCHAR(50) NOT NULL,               -- 任务类型（psi, ss_lr等）
+    status VARCHAR(20) NOT NULL,                  -- 任务状态
+    params JSONB,                                 -- 任务参数
+    result JSONB,                                 -- 任务结果
+    error_message TEXT,                           -- 错误信息
+    performance_metrics JSONB,                    -- 性能指标
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW(),
     completed_at TIMESTAMP
 );
 
+CREATE INDEX idx_celery_task_id ON secretflow_tasks(celery_task_id);
 CREATE INDEX idx_task_id ON secretflow_tasks(task_id);
+CREATE INDEX idx_subtask_id ON secretflow_tasks(subtask_id);
+CREATE INDEX idx_execution_id ON secretflow_tasks(execution_id);
 CREATE INDEX idx_status ON secretflow_tasks(status);
 CREATE INDEX idx_created_at ON secretflow_tasks(created_at);
 ```
@@ -432,7 +477,9 @@ CREATE INDEX idx_created_at ON secretflow_tasks(created_at);
 ```sql
 CREATE TABLE task_status_logs (
     id SERIAL PRIMARY KEY,
-    task_id VARCHAR(100) NOT NULL,
+    task_id VARCHAR(100) NOT NULL,          -- 归属的大任务/DAG ID
+    subtask_id VARCHAR(100) NOT NULL,       -- 子任务/节点 ID
+    execution_id VARCHAR(100) NOT NULL,     -- 本次执行记录 ID
     status VARCHAR(20) NOT NULL,
     message TEXT,
     data JSONB,
@@ -440,6 +487,7 @@ CREATE TABLE task_status_logs (
 );
 
 CREATE INDEX idx_task_log_task_id ON task_status_logs(task_id);
+CREATE INDEX idx_task_log_execution_id ON task_status_logs(execution_id);
 ```
 
 ## 六、环境配置对接
@@ -596,7 +644,9 @@ async def test_status_listener():
     
     # 模拟 Worker 发布状态事件
     await redis.publish("task_status_events", json.dumps({
-        "task_request_id": "test-001",
+        "task_id": "dag-12345-abcde",
+        "subtask_id": "node-67890-fghij",
+        "execution_id": "exec-11111-klmno",
         "status": "SUCCESS",
         "data": {"result": {...}}
     }))
@@ -605,7 +655,7 @@ async def test_status_listener():
     await asyncio.sleep(1)
     
     # 验证数据库已更新
-    task = await get_task_from_db("test-001")
+    task = await get_task_from_db_by_execution_id("exec-11111-klmno")
     assert task.status == "SUCCESS"
 ```
 
