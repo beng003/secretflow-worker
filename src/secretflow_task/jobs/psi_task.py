@@ -23,7 +23,7 @@ def _validate_psi_config(task_config: Dict[str, Any]) -> None:
     Raises:
         ValueError: 配置参数不合法时抛出异常
     """
-    required_fields = ["keys", "input_paths", "output_paths", "receiver"]
+    required_fields = ["keys", "input_paths", "output_paths"]
 
     for field in required_fields:
         if field not in task_config:
@@ -32,7 +32,7 @@ def _validate_psi_config(task_config: Dict[str, Any]) -> None:
     keys = task_config["keys"]
     input_paths = task_config["input_paths"]
     output_paths = task_config["output_paths"]
-    receiver = task_config["receiver"]
+    receiver = task_config.get("receiver")
 
     if not isinstance(keys, dict):
         raise ValueError(f"keys必须是字典类型，当前类型: {type(keys)}")
@@ -63,7 +63,7 @@ def _validate_psi_config(task_config: Dict[str, Any]) -> None:
             f"keys和output_paths的参与方不一致: {parties} vs {set(output_paths.keys())}"
         )
 
-    if receiver not in parties:
+    if receiver and receiver not in parties:
         raise ValueError(f"receiver '{receiver}' 不在参与方列表中: {parties}")
 
     for party, key_list in keys.items():
@@ -100,7 +100,7 @@ def _count_csv_lines(file_path: str) -> int:
             line_count = sum(1 for _ in f)
             return max(0, line_count - 1)
     except Exception as e:
-        logger.error(f"统计文件行数失败: {file_path}, 错误: %s", e)
+        logger.error("统计文件行数失败: %s, 错误: %s", file_path, e)
         return 0
 
 
@@ -158,11 +158,21 @@ def execute_psi(
         keys = task_config["keys"]
         input_paths = task_config["input_paths"]
         output_paths = task_config["output_paths"]
-        receiver = task_config["receiver"]
+        
+        # 处理可选的 receiver
+        receiver = task_config.get("receiver")
+        broadcast_result = task_config.get("broadcast_result", False)
+        
+        if not receiver:
+            # 如果未指定 receiver，默认为广播模式
+            broadcast_result = True
+            # 选择第一个参与方作为名义上的 receiver (SPU 接口可能需要)
+            receiver = list(keys.keys())[0]
+            logger.info(f"未指定receiver，启用广播模式，主接收方: {receiver}")
+            
         protocol = task_config.get("protocol", "KKRT_PSI_2PC")
         precheck_input = task_config.get("precheck_input", False)
         sort_result = task_config.get("sort", False)
-        broadcast_result = task_config.get("broadcast_result", False)
 
         logger.info(
             f"PSI配置: protocol={protocol}, receiver={receiver}, parties={list(keys.keys())}"
@@ -211,13 +221,13 @@ def execute_psi(
 
         intersection_count = 0
         receiver_output_path = output_paths.get(receiver)
-        if receiver_output_path and os.path.exists(receiver_output_path):
+        if receiver_output_path:
+            # 直接在接收方设备上执行检查，避免非接收方节点的本地检查误报
+            # _count_csv_lines 内部会检查文件是否存在
             intersection_count = reveal(
                 devices[receiver](_count_csv_lines)(receiver_output_path)
             )
             logger.info(f"交集数量: {intersection_count}")
-        else:
-            logger.warning(f"接收方输出文件不存在: {receiver_output_path}")
 
         result = {
             "intersection_count": intersection_count,

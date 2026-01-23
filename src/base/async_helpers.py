@@ -85,7 +85,8 @@ def run_async_safely(
     except TimeoutError as e:
         execution_time = time.time() - start_time
         logger.error(
-            f"[ASYNC-HELPER] 异步函数执行超时: {func_name}",
+            "[ASYNC-HELPER] 异步函数执行超时: %s",
+            func_name,
             extra={
                 "function_name": func_name,
                 "execution_time": execution_time,
@@ -97,7 +98,8 @@ def run_async_safely(
     except Exception as e:
         execution_time = time.time() - start_time
         logger.error(
-            f"[ASYNC-HELPER] 异步函数执行失败: {func_name}",
+            "[ASYNC-HELPER] 异步函数执行失败: %s",
+            func_name,
             extra={
                 "function_name": func_name,
                 "execution_time": execution_time,
@@ -142,7 +144,7 @@ def _run_in_new_loop(
         try:
             loop.close()
         except Exception as e:
-            logger.warning(f"[ASYNC-HELPER] 关闭事件循环时出现警告: {str(e)}")
+            logger.warning("[ASYNC-HELPER] 关闭事件循环时出现警告: %s", str(e))
 
 
 def _run_in_thread_pool(
@@ -174,7 +176,7 @@ def _run_in_thread_pool(
                 loop.close()
             except Exception as e:
                 logger.warning(
-                    f"[ASYNC-HELPER] 线程池中关闭事件循环时出现警告: {str(e)}"
+                    "[ASYNC-HELPER] 线程池中关闭事件循环时出现警告: %s", str(e)
                 )
 
     # 使用线程池执行
@@ -187,7 +189,7 @@ def _run_in_thread_pool(
             thread_timeout = timeout + 5 if timeout else None
             return future.result(timeout=thread_timeout)
         except Exception as e:
-            logger.error(f"[ASYNC-HELPER] 线程池执行异常: {str(e)}")
+            logger.error("[ASYNC-HELPER] 线程池执行异常: %s", str(e))
             raise
 
 

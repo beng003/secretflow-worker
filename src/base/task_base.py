@@ -83,7 +83,8 @@ class BaseTask(Task, ABC):
         retry_count = getattr(self.request, "retries", 0)
 
         logger.error(
-            f"[CELERY] 任务 {task_id} 执行失败，耗时 {execution_time:.2f} 秒",
+            "[CELERY] 任务 %s 执行失败，耗时 %.2f 秒",
+            task_id, execution_time,
             extra={
                 "task_id": task_id,
                 "task_name": self.name,
@@ -114,7 +115,8 @@ class BaseTask(Task, ABC):
         retry_count = self.request.retries if hasattr(self.request, "retries") else 0
 
         logger.warning(
-            f"[CELERY] 任务 {task_id} 正在重试 (第{retry_count + 1}次)",
+            "[CELERY] 任务 %s 正在重试 (第%d次)",
+            task_id, retry_count + 1,
             extra={
                 "task_id": task_id,
                 "task_name": self.name,

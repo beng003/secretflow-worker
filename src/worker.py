@@ -97,7 +97,7 @@ def main():
     except KeyboardInterrupt:
         logger.info("📋 Worker被用户中断")
     except Exception as e:
-        logger.error(f"❌ Worker启动失败: {e}")
+        logger.error("❌ Worker启动失败: %s", e)
         sys.exit(1)
     finally:
         logger.info("👋 SecretFlow Worker已停止")

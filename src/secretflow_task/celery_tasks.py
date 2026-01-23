@@ -31,7 +31,7 @@ class SecretFlowTask(Task):
 
     # 任务重试配置
     autoretry_for = (ClusterInitError, DeviceConfigError)
-    retry_kwargs = {"max_retries": 3, "countdown": 60}
+    retry_kwargs = {"max_retries": 1, "countdown": 60}
     retry_backoff = True
     retry_backoff_max = 600
     retry_jitter = True
@@ -54,10 +54,11 @@ class SecretFlowTask(Task):
         execution_id = task_params.get("execution_id", "unknown")
 
         logger.warning(
-            f"SecretFlow任务重试: celery_task_id={task_id}, "
-            f"execution_id={execution_id}, "
-            f"retry_count={self.request.retries}, "
-            f"reason={str(exc)}"
+            "SecretFlow任务重试: celery_task_id=%s, execution_id=%s, retry_count=%s, reason=%s",
+            task_id,
+            execution_id,
+            str(self.request.retries),
+            str(exc),
         )
 
         # 发送重试状态通知
@@ -94,9 +95,10 @@ class SecretFlowTask(Task):
         execution_id = task_params.get("execution_id", "unknown")
 
         logger.error(
-            f"SecretFlow任务失败: task_id={task_id}, "
-            f"execution_id={execution_id}, "
-            f"error={str(exc)}",
+            "SecretFlow任务失败: task_id=%s, execution_id=%s, error=%s",
+            task_id,
+            execution_id,
+            str(exc),
             exc_info=True,
         )
 
@@ -190,7 +192,14 @@ def _validate_task_params(task_params: Dict[str, Any]) -> None:
     Raises:
         ValueError: 参数验证失败
     """
-    required_keys = ["task_id", "subtask_id", "execution_id", "sf_init_config", "spu_config", "task_config"]
+    required_keys = [
+        "task_id",
+        "subtask_id",
+        "execution_id",
+        "sf_init_config",
+        "spu_config",
+        "task_config",
+    ]
 
     for key in required_keys:
         if key not in task_params:
@@ -211,9 +220,7 @@ def _validate_task_params(task_params: Dict[str, Any]) -> None:
     reject_on_worker_lost=True,
     track_started=True,
 )
-def execute_secretflow_celery_task(
-    self, task_params: Dict[str, Any]
-) -> Dict[str, Any]:
+def execute_secretflow_celery_task(self, task_params: Dict[str, Any]) -> Dict[str, Any]:
     """SecretFlow任务的Celery包装器
 
     将SecretFlow任务执行器封装为Celery异步任务，提供：
@@ -395,8 +402,7 @@ def execute_secretflow_celery_task(
         execution_time = time.time() - execution_start
 
         logger.warning(
-            f"SecretFlow任务遇到可重试错误: {type(e).__name__}: {str(e)}, "
-            f"将在 {self.retry_kwargs.get('countdown', 60)} 秒后重试"
+            f"SecretFlow任务遇到可重试错误: {type(e).__name__}: {str(e)}, 将在 {self.retry_kwargs.get('countdown', 60)} 秒后重试"
         )
 
         # 抛出重试异常
@@ -409,12 +415,16 @@ def execute_secretflow_celery_task(
         error_msg = str(e)
 
         logger.error(
-            f"Celery SecretFlow任务失败: celery_id={celery_task_id}, "
-            f"task_id={task_params.get('task_id', 'unknown')}, "
-            f"subtask_id={task_params.get('subtask_id', 'unknown')}, "
-            f"execution_id={task_params.get('execution_id', 'unknown')}, "
-            f"error={error_type}: {error_msg}, "
-            f"execution_time={execution_time:.2f}秒",
+            "Celery SecretFlow任务失败: celery_id=%s, "
+            "task_id=%s, subtask_id=%s, execution_id=%s, "
+            "error=%s: %s, execution_time=%.2f秒",
+            celery_task_id,
+            task_params.get("task_id", "unknown"),
+            task_params.get("subtask_id", "unknown"),
+            task_params.get("execution_id", "unknown"),
+            error_type,
+            error_msg,
+            execution_time,
             exc_info=True,
         )
 

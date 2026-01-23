@@ -8,6 +8,7 @@ import time
 from typing import Any, Union
 from utils.log import logger
 from secretflow.device import PYU, SPU, HEU
+from secretflow import wait
 
 
 class DeviceManager:
@@ -206,7 +207,7 @@ class DeviceManager:
             try:
                 # PYU设备通常不需要显式关闭，SPU/HEU需要
                 if hasattr(device, "shutdown"):
-                    device.shutdown()
+                    wait(device.shutdown())
                     logger.info(f"成功关闭设备: {device_name}")
             except Exception as e:
                 # 记录清理错误但不抛出异常

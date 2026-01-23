@@ -6,7 +6,7 @@ TaskDispatcher负责根据task_type将任务路由到对应的执行函数。
 """
 
 from typing import Dict, Callable, List, Any
-
+from secretflow import wait
 from utils.log import logger
 
 
@@ -103,13 +103,15 @@ class TaskDispatcher:
         logger.info(f"开始执行任务: task_type='{task_type}', func={task_func.__name__}")
 
         try:
-            result = task_func(devices, task_config)
+            result = wait(task_func(devices, task_config))
             logger.info(f"任务执行成功: task_type='{task_type}'")
             return result
         except Exception as e:
             logger.error(
-                f"任务执行失败: task_type='{task_type}', "
-                f"error_type={type(e).__name__}, error_msg={str(e)}"
+                "任务执行失败: task_type='%s', error_type=%s, error_msg=%s",
+                task_type,
+                type(e).__name__,
+                str(e),
             )
             raise
 

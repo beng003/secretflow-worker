@@ -89,7 +89,7 @@ def execute_secretflow_task(
 
     Args:
         task_id: 大任务/DAG ID
-        subtask_id: 子任务/节点 ID  
+        subtask_id: 子任务/节点 ID
         execution_id: 本次执行记录 ID
         sf_init_config: SecretFlow集群初始化配置
             - parties: 参与方列表 ['alice', 'bob']
@@ -153,7 +153,15 @@ def execute_secretflow_task(
         cluster_init_start = time.time()
 
         _publish_status(
-            execution_id, "RUNNING", {"stage": "cluster_init", "progress": 0.1}
+            execution_id,
+            "RUNNING",
+            {
+                "stage": "cluster_init",
+                "task_id": task_id,
+                "subtask_id": subtask_id,
+                "execution_id": execution_id,
+                "progress": 0.1,
+            },
         )
 
         cluster_initializer = SecretFlowClusterInitializer()
@@ -168,6 +176,9 @@ def execute_secretflow_task(
             "RUNNING",
             {
                 "stage": "cluster_initialized",
+                "task_id": task_id,
+                "subtask_id": subtask_id,
+                "execution_id": execution_id,
                 "cluster_init_time": cluster_init_time,
                 "progress": 0.2,
             },
@@ -180,7 +191,15 @@ def execute_secretflow_task(
         device_init_start = time.time()
 
         _publish_status(
-            execution_id, "RUNNING", {"stage": "device_creation", "progress": 0.3}
+            execution_id,
+            "RUNNING",
+            {
+                "stage": "device_creation",
+                "task_id": task_id,
+                "subtask_id": subtask_id,
+                "execution_id": execution_id,
+                "progress": 0.3,
+            },
         )
 
         device_manager = DeviceManager.get_instance()
@@ -206,6 +225,9 @@ def execute_secretflow_task(
             "RUNNING",
             {
                 "stage": "devices_initialized",
+                "task_id": task_id,
+                "subtask_id": subtask_id,
+                "execution_id": execution_id,
                 "device_init_time": device_init_time,
                 "initialized_devices": list(devices.keys()),
                 "progress": 0.4,
@@ -228,7 +250,14 @@ def execute_secretflow_task(
         _publish_status(
             execution_id,
             "RUNNING",
-            {"stage": "task_execution", "task_type": task_type, "progress": 0.5},
+            {
+                "stage": "task_execution",
+                "task_id": task_id,
+                "subtask_id": subtask_id,
+                "execution_id": execution_id,
+                "task_type": task_type,
+                "progress": 0.5,
+            },
         )
 
         # 使用TaskDispatcher分发任务
@@ -312,17 +341,17 @@ def execute_secretflow_task(
         error_type = type(e).__name__
         error_msg = str(e)
 
-        logger.error(
+        error_report = (
             "\n" + "=" * 80 + "\n"
-            "SecretFlow任务执行失败\n"
+            f"SecretFlow任务执行失败\n"
             f"  任务ID: {task_id}\n"
             f"  子任务ID: {subtask_id}\n"
             f"  执行ID: {execution_id}\n"
-            f"  错误类型: {error_type}\n"
-            f"  错误信息: {error_msg}\n"
-            f"  已执行时间: {execution_time:.2f}秒\n" + "=" * 80,
-            exc_info=True,
+            f"  错误类型: {str(error_type)}\n"
+            f"  错误信息: {str(error_msg)}\n"
+            f"  已执行时间: {execution_time:.2f}秒\n" + "=" * 80
         )
+        logger.error(error_report, exc_info=True)
 
         # 发送任务失败状态
         _publish_status(

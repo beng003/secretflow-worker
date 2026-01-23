@@ -93,32 +93,28 @@ class SecretFlowClusterInitializer:
         except Exception as e:
             init_time = time.time() - start_time
             logger.error(
-                f"SecretFlow集群初始化失败，耗时: {init_time:.2f}秒，错误: {e}"
+                f"SecretFlow集群初始化失败，耗时: {init_time:.2f}秒，错误: {str(e)}",
+                exc_info=True
             )
             self._cluster_initialized = False
             return False
 
     def shutdown_cluster(self) -> None:
-        """关闭SecretFlow集群"""
+        """关闭SecretFlow集群
+        
+        注意：由于配置了 worker_max_tasks_per_child=1，Celery Worker 进程
+        会在任务完成后自动退出，进程退出会强制释放所有资源（包括端口）。
+        因此不需要手动调用 sf.shutdown()，避免耗时过长（10-60秒）导致
+        后续任务端口冲突。
+        """
         if not self._cluster_initialized:
             logger.warning("SecretFlow集群未初始化，无需关闭")
             return
 
-        try:
-            logger.info("开始关闭SecretFlow集群...")
-
-            # 使用SecretFlow原生API关闭集群
-            import secretflow as sf
-
-            sf.shutdown()
-
-            self._cluster_initialized = False
-            logger.info("SecretFlow集群已关闭")
-
-        except Exception as e:
-            logger.error("SecretFlow集群关闭时发生错误: %s", e)
-            # 即使关闭失败也标记为未初始化
-            self._cluster_initialized = False
+        # 跳过手动 shutdown，依赖进程退出清理
+        # 进程退出 → 所有资源自动释放，比 sf.shutdown() 更快更可靠
+        logger.info("跳过手动 shutdown，依赖 Celery Worker 进程退出清理资源")
+        self._cluster_initialized = False
 
     def is_cluster_ready(self) -> bool:
         """检查集群是否就绪
