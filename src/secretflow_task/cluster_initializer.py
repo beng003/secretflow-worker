@@ -52,7 +52,8 @@ class SecretFlowClusterInitializer:
         start_time = time.time()
 
         try:
-            logger.info("开始初始化SecretFlow集群...")
+            logger.info("[调试] 开始初始化SecretFlow集群...")
+            logger.info(f"[调试] 集群初始化配置: {sf_init_config}")
 
             # 使用SecretFlow原生API初始化集群
             import secretflow as sf
@@ -78,22 +79,34 @@ class SecretFlowClusterInitializer:
             else:
                 sf_init_config['runtime_env']['env_vars']['PYTHONPATH'] = current_pythonpath
             
-            logger.info(f"配置Ray运行时环境PYTHONPATH: {sf_init_config['runtime_env']['env_vars']['PYTHONPATH']}")
+            logger.info(f"[调试] 配置Ray运行时环境PYTHONPATH: {sf_init_config['runtime_env']['env_vars']['PYTHONPATH']}")
+            
+            # 记录关键配置信息
+            if 'address' in sf_init_config:
+                logger.info(f"[调试] SecretFlow集群地址: {sf_init_config['address']}")
+            if 'parties' in sf_init_config:
+                logger.info(f"[调试] 参与方列表: {sf_init_config['parties']}")
+            if 'party' in sf_init_config:
+                logger.info(f"[调试] 本节点party: {sf_init_config['party']}")
 
+            logger.info(f"[调试] 调用 sf.init(**config)...")
             sf.init(**sf_init_config)
+            logger.info(f"[调试] sf.init 调用完成")
 
             self._cluster_initialized = True
             self._initialization_time = time.time() - start_time
 
             logger.info(
-                f"SecretFlow集群初始化成功，耗时: {self._initialization_time:.2f}秒"
+                f"[调试] SecretFlow集群初始化成功，耗时: {self._initialization_time:.2f}秒"
             )
             return True
 
         except Exception as e:
             init_time = time.time() - start_time
+            logger.error(f"[调试] SecretFlow集群初始化失败，异常类型: {type(e).__name__}")
+            logger.error(f"[调试] 异常信息: {str(e)}")
             logger.error(
-                f"SecretFlow集群初始化失败，耗时: {init_time:.2f}秒，错误: {str(e)}",
+                f"SecretFlow集群初始化失败，耗时: {init_time:.2f}秒",
                 exc_info=True
             )
             self._cluster_initialized = False

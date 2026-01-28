@@ -78,13 +78,13 @@ def local_psi_test() -> Dict[str, Any]:
                 "party": "alice",
                 # Please choose an unused port.
                 "address": "127.0.0.1:7702",
-                "listen_addr": "0.0.0.0:7702",
+                # "listen_addr": "0.0.0.0:7702",
             },
             {
                 "party": "bob",
                 # Please choose an unused port.
                 "address": "127.0.0.1:7802",
-                "listen_addr": "0.0.0.0:7802",
+                # "listen_addr": "0.0.0.0:7802",
             },
         ],
         "runtime_config": {

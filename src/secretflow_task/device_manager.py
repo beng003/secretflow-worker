@@ -70,7 +70,10 @@ class DeviceManager:
 
             parties = [node["party"] for node in nodes if "party" in node]
 
-        logger.info(f"检测到参与方: {parties}")
+        logger.info(f"[调试] 检测到参与方: {parties}")
+        logger.info(f"[调试] PYU配置: {pyu_config}")
+        logger.info(f"[调试] SPU配置存在: {spu_config is not None}")
+        logger.info(f"[调试] HEU配置存在: {heu_config is not None}")
 
         # 按需初始化PYU设备
         if pyu_config and parties:
@@ -152,21 +155,37 @@ class DeviceManager:
                 logger.error("SPU配置中缺少cluster_def字段")
                 return None
 
-            logger.info(f"创建SPU设备，cluster_def: {cluster_def}")
+            logger.info(f"[调试] 准备创建SPU设备...")
+            logger.info(f"[调试] cluster_def 完整配置: {cluster_def}")
+            
+            # 详细记录每个节点的配置
+            nodes = cluster_def.get('nodes', [])
+            logger.info(f"[调试] SPU 集群节点数量: {len(nodes)}")
+            for idx, node in enumerate(nodes):
+                logger.info(f"[调试] 节点 {idx}: party={node.get('party')}, address={node.get('address')}, listen_addr={node.get('listen_addr')}")
+            
+            # 记录运行时配置
+            runtime_config = cluster_def.get('runtime_config', {})
+            logger.info(f"[调试] SPU 运行时配置: protocol={runtime_config.get('protocol')}, field={runtime_config.get('field')}")
 
             # 创建SPU设备
+            logger.info(f"[调试] 开始调用 SPU(cluster_def=...) 创建设备...")
             spu_device = SPU(cluster_def=cluster_def)
+            logger.info(f"[调试] SPU 设备对象创建完成，类型: {type(spu_device)}")
 
             # 记录初始化时间
             init_time = time.time() - start_time
             self._device_init_times[device_type] = init_time
 
-            logger.info(f"SPU设备创建成功，耗时: {init_time:.2f}秒")
+            logger.info(f"[调试] SPU设备创建成功，耗时: {init_time:.2f}秒")
+            logger.info(f"[调试] SPU 设备实例: {spu_device}")
 
             return spu_device
 
         except Exception as e:
-            logger.error("创建SPU设备失败", exc_info=True)
+            logger.error(f"[调试] 创建SPU设备失败，异常类型: {type(e).__name__}")
+            logger.error(f"[调试] 异常信息: {str(e)}")
+            logger.error("创建SPU设备失败 - 完整堆栈", exc_info=True)
             # 记录初始化失败
             init_time = time.time() - start_time
             self._device_init_times[f"{device_type}_failed"] = init_time
