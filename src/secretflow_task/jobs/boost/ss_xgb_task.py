@@ -25,11 +25,12 @@ def _save_ss_xgb_model(
     label_party: str,
     parties: List[str],
     params: Dict,
-    model_output: Dict[str, str],
+    model_dir: str,
     spu_device: SPU,
+    devices: Dict[str, PYU],
 ) -> None:
     """
-    保存SS-XGBoost模型
+    保存SS-XGBoost模型到指定文件夹，自动为每个参与方创建子目录
 
     Args:
         model: 训练好的XgbModel模型
@@ -38,61 +39,77 @@ def _save_ss_xgb_model(
         label_party: 标签所属参与方
         parties: 参与方列表
         params: 训练参数
-        model_output: 模型输出路径字典 {party: path}
+        model_dir: 模型保存的根目录路径
         spu_device: SPU设备对象
+        devices: 设备字典 {party: PYU}
     """
-    logger.info("开始保存SS-XGBoost模型...")
+    logger.info(f"开始保存SS-XGBoost模型到: {model_dir}")
+
+    # 确保根目录存在
+    os.makedirs(model_dir, exist_ok=True)
 
     # 构建模型元数据
     model_meta = {
         "model_type": "ss_xgb",
         "version": "1.0.0",
         "objective": str(model.objective),
-        "base_score": float(model.base),
+        "base": float(model.base),
+        "num_trees": len(model.trees),
         "features": features,
         "label": label,
         "label_party": label_party,
         "parties": parties,
-        "num_trees": len(model.trees),
-        "training_params": params,
+        "params": params,
         "created_at": datetime.now().isoformat(),
-        "secure_mode": True,
     }
 
-    # 为每个参与方保存模型到指定文件夹
+    # 在根目录保存全局元数据（供Driver端读取）
+    global_meta_path = os.path.join(model_dir, "model.meta.json")
+    with open(global_meta_path, "w") as f:
+        json.dump(model_meta, f, indent=2)
+    logger.info(f"全局元数据已保存到: {global_meta_path}")
+
+    # 为每个参与方创建子目录
     for party in parties:
-        if party not in model_output:
-            raise ValueError(f"model_output中缺少参与方'{party}'的路径")
-
-        party_dir = model_output[party]
-
-        # 确保文件夹存在
+        party_dir = os.path.join(model_dir, party)
         os.makedirs(party_dir, exist_ok=True)
-
-        # 保存元数据到文件夹内
-        meta_path = os.path.join(party_dir, "model.meta.json")
-        with open(meta_path, "w") as f:
-            json.dump(model_meta, f, indent=2)
-        logger.info(f"参与方 {party} 的元数据已保存到: {meta_path}")
 
     # 保存树结构和权重（每个参与方的树分片）
     for tree_idx, (tree, weight) in enumerate(zip(model.trees, model.weights)):
-        # 保存树结构（每个参与方只保存自己的部分到文件夹内）
-        for party, pyu in zip(parties, tree.keys()):
-            party_dir = model_output[party]
+        # 保存树结构（每个参与方只保存自己的部分到子目录内）
+        logger.info(f"保存树 {tree_idx}，tree.keys()={list(tree.keys())}")
+        
+        for party in parties:
+            pyu = devices[party]
+            if pyu not in tree:
+                logger.error(f"参与方 {party} 的PYU设备 {pyu} 不在树结构中")
+                logger.error(f"tree.keys()={list(tree.keys())}")
+                logger.error(f"devices={devices}")
+                raise ValueError(f"参与方 {party} 的PYU设备不在树结构中")
+            
+            party_dir = os.path.join(model_dir, party)
             tree_path = os.path.join(party_dir, f"tree_{tree_idx}.pkl")
             tree_obj = tree[pyu]
+            
+            # 记录树对象信息
+            logger.info(f"参与方 {party} 的树对象: type={type(tree_obj)}, is_none={tree_obj is None}")
 
-            # 使用pickle保存PYUObject
-            import pickle
+            # 使用pickle保存PYUObject到对应参与方的服务器
+            def save_tree(obj, path):
+                import pickle
+                import os
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                with open(path, "wb") as f:
+                    pickle.dump(obj, f)
+                # 返回文件大小用于验证
+                return os.path.getsize(path)
+            
+            file_size = pyu(save_tree)(tree_obj, tree_path)
+            logger.info(f"树 {tree_idx} 参与方 {party} 已保存到 {tree_path}，文件大小: {file_size}")
 
-            pyu(lambda obj, path: pickle.dump(obj, open(path, "wb")))(
-                tree_obj, tree_path
-            )
-
-        # 保存权重（SPUObject，需要dump到各参与方的文件夹内）
+        # 保存权重（SPUObject，需要dump到各参与方的子目录内）
         weight_paths = [
-            os.path.join(model_output[party], f"weight_{tree_idx}.share")
+            os.path.join(model_dir, party, f"weight_{tree_idx}.share")
             for party in parties
         ]
         spu_device.dump(weight, weight_paths)
@@ -103,16 +120,16 @@ def _save_ss_xgb_model(
 
 
 def load_ss_xgb_model(
-    model_output: Dict[str, str],
+    model_dir: str,
     spu_device: SPU,
     parties: List[str],
     devices: Dict[str, PYU],
 ) -> Dict:
     """
-    加载SS-XGBoost模型
+    从指定文件夹加载SS-XGBoost模型，自动从各参与方子目录读取
 
     Args:
-        model_output: 模型输出路径字典 {party: path}
+        model_dir: 模型保存的根目录路径
         spu_device: SPU设备对象
         parties: 参与方列表
         devices: 设备字典
@@ -120,27 +137,26 @@ def load_ss_xgb_model(
     Returns:
         包含模型和元数据的字典
     """
-    logger.info("开始加载SS-XGBoost模型...")
+    logger.info(f"开始从 {model_dir} 加载SS-XGBoost模型...")
 
-    # 验证所有参与方的文件夹路径都存在
-    for party in parties:
-        if party not in model_output:
-            raise ValueError(f"model_output中缺少参与方'{party}'的路径")
-        party_dir = model_output[party]
-        if not os.path.exists(party_dir):
-            raise FileNotFoundError(f"参与方 {party} 的模型文件夹不存在: {party_dir}")
+    # 验证根目录存在
+    if not os.path.exists(model_dir):
+        raise FileNotFoundError(f"模型根目录不存在: {model_dir}")
 
-    # 从第一个参与方的元数据文件读取模型信息
-    first_party = parties[0]
-    first_party_dir = model_output[first_party]
-    meta_path = os.path.join(first_party_dir, "model.meta.json")
-
-    if not os.path.exists(meta_path):
-        raise FileNotFoundError(f"模型元数据文件不存在: {meta_path}")
+    # 从根目录读取全局元数据（Driver端可访问）
+    global_meta_path = os.path.join(model_dir, "model.meta.json")
+    if not os.path.exists(global_meta_path):
+        raise FileNotFoundError(f"模型元数据文件不存在: {global_meta_path}")
 
     # 读取模型元数据
-    with open(meta_path, "r") as f:
+    with open(global_meta_path, "r") as f:
         model_meta = json.load(f)
+
+    # 验证所有参与方的子目录都存在（在Driver端检查）
+    for party in parties:
+        party_dir = os.path.join(model_dir, party)
+        if not os.path.exists(party_dir):
+            logger.warning(f"Driver端无法访问参与方 {party} 的子目录: {party_dir}（这在分布式环境中是正常的）")
 
     # 验证模型类型
     if model_meta.get("model_type") != "ss_xgb":
@@ -156,8 +172,8 @@ def load_ss_xgb_model(
         objective = RegType.Linear
 
     # 创建XgbModel
-    base_score = model_meta["base_score"]
-    model = XgbModel(spu_device, objective, base_score)
+    base = model_meta["base"]
+    model = XgbModel(spu_device, objective, base)
 
     # 加载树和权重
     num_trees = model_meta["num_trees"]
@@ -166,27 +182,26 @@ def load_ss_xgb_model(
         tree = {}
         for party in parties:
             pyu = devices[party]
-            party_dir = model_output[party]
+            party_dir = os.path.join(input_model_dir, party)
             tree_path = os.path.join(party_dir, f"tree_{tree_idx}.pkl")
 
-            if not os.path.exists(tree_path):
-                raise FileNotFoundError(f"树文件不存在: {tree_path}")
-
-            # 加载PYUObject
-            import pickle
-
-            tree_obj = pyu(lambda path: pickle.load(open(path, "rb")))(tree_path)
+            # 从对应参与方的服务器加载PYUObject（文件检查在PYU端执行）
+            def load_tree(path):
+                import pickle
+                import os
+                if not os.path.exists(path):
+                    raise FileNotFoundError(f"树文件不存在: {path}")
+                with open(path, "rb") as f:
+                    return pickle.load(f)
+            
+            tree_obj = pyu(load_tree)(tree_path)
             tree[pyu] = tree_obj
 
-        # 加载权重
+        # 加载权重（SPU会自动处理各参与方的文件检查）
         weight_paths = [
-            os.path.join(model_output[party], f"weight_{tree_idx}.share")
+            os.path.join(input_model_dir, party, f"weight_{tree_idx}.share")
             for party in parties
         ]
-        for weight_path in weight_paths:
-            if not os.path.exists(weight_path):
-                raise FileNotFoundError(f"权重文件不存在: {weight_path}")
-
         weight = spu_device.load(weight_paths)
 
         model.trees.append(tree)
@@ -200,7 +215,7 @@ def load_ss_xgb_model(
         "label": model_meta["label"],
         "label_party": model_meta["label_party"],
         "parties": model_meta["parties"],
-        "training_params": model_meta["training_params"],
+        "params": model_meta.get("params", {}),
         "created_at": model_meta.get("created_at"),
         "secure_mode": True,
     }
@@ -214,11 +229,11 @@ def execute_ss_xgboost(devices: Dict[str, PYU], task_config: Dict) -> Dict:
     Args:
         devices: 设备字典
         task_config: 任务配置，包含以下字段：
-            - train_data: Dict[str, str] - 训练数据路径字典
+            - input_train_data: Dict[str, str] - 训练数据路径字典
             - features: List[str] - 特征列名列表
             - label: str - 标签列名
             - label_party: str - 标签所属参与方
-            - model_output: Dict[str, str] - 模型输出路径字典 {party: path}
+            - output_model_dir: str - 模型保存的根目录路径
             - params: Dict - 训练参数
                 - num_boost_round: int - 树的数量（默认10）
                 - max_depth: int - 树的最大深度（默认5）
@@ -237,28 +252,28 @@ def execute_ss_xgboost(devices: Dict[str, PYU], task_config: Dict) -> Dict:
 
         # 验证配置
         required_fields = [
-            "train_data",
+            "input_train_data",
             "features",
             "label",
             "label_party",
-            "model_output",
+            "output_model_dir",
         ]
         for field in required_fields:
             if field not in task_config:
                 raise ValueError(f"缺少必需字段: {field}")
 
-        train_data = task_config["train_data"]
+        input_train_data = task_config["input_train_data"]
         features = task_config["features"]
         label = task_config["label"]
         label_party = task_config["label_party"]
-        model_output = task_config["model_output"]
+        output_model_dir = task_config["output_model_dir"]
         params = task_config.get("params", {})
 
-        # 验证model_output格式
-        if not isinstance(model_output, dict):
-            raise ValueError("model_output必须是字典格式 {party: path}")
+        # 验证output_model_dir格式
+        if not isinstance(output_model_dir, str) or not output_model_dir:
+            raise ValueError("output_model_dir必须是非空字符串")
 
-        parties = list(train_data.keys())
+        parties = list(input_train_data.keys())
 
         # 获取SPU设备
         spu_device = devices.get("spu")
@@ -267,12 +282,7 @@ def execute_ss_xgboost(devices: Dict[str, PYU], task_config: Dict) -> Dict:
 
         # 读取训练数据
         logger.info("读取垂直分区训练数据...")
-        pyu_input_paths = {}
-        for party in train_data.keys():
-            pyu_device = devices.get(party)
-            if pyu_device is None:
-                raise ValueError(f"devices中缺少参与方'{party}'的PYU设备")
-            pyu_input_paths[pyu_device] = train_data[party]
+        pyu_input_paths = {devices[party]: input_train_data[party] for party in parties}
 
         vdf = sf.data.vertical.read_csv(pyu_input_paths)
 
@@ -311,12 +321,13 @@ def execute_ss_xgboost(devices: Dict[str, PYU], task_config: Dict) -> Dict:
             label_party=label_party,
             parties=parties,
             params=xgb_params,
-            model_output=model_output,
+            model_dir=output_model_dir,
             spu_device=spu_device,
+            devices=devices,
         )
 
         result = {
-            "model_output": model_output,
+            "output_model_dir": output_model_dir,
             "num_trees": len(model.trees),
             "secure_mode": True,
             "training_params": xgb_params,
@@ -338,9 +349,9 @@ def execute_ss_xgb_predict(devices: Dict[str, PYU], task_config: Dict) -> Dict:
     Args:
         devices: 设备字典
         task_config: 任务配置，包含以下字段：
-            - model_path: Dict[str, str] - 模型文件路径字典 {party: path}
-            - predict_data: Dict[str, str] - 预测数据路径字典
-            - output_path: Dict[str, str] - 预测结果输出路径字典 {party: path}
+            - input_model_dir: str - 模型保存的根目录路径
+            - input_predict_data: Dict[str, str] - 预测数据路径字典
+            - output_prediction: Dict[str, str] - 预测结果输出路径字典 {party: path}
             - receiver_party: str - 接收预测结果的参与方（可选）
 
     Returns:
@@ -350,22 +361,22 @@ def execute_ss_xgb_predict(devices: Dict[str, PYU], task_config: Dict) -> Dict:
         logger.info("开始执行SS-XGBoost预测任务")
 
         # 验证配置
-        required_fields = ["model_path", "predict_data", "output_path"]
+        required_fields = ["input_model_dir", "input_predict_data", "output_prediction"]
         for field in required_fields:
             if field not in task_config:
                 raise ValueError(f"缺少必需字段: {field}")
 
-        model_path = task_config["model_path"]
-        predict_data = task_config["predict_data"]
-        output_path = task_config["output_path"]
+        input_model_dir = task_config["input_model_dir"]
+        input_predict_data = task_config["input_predict_data"]
+        output_prediction = task_config["output_prediction"]
 
         # 验证路径格式
-        if not isinstance(model_path, dict):
-            raise ValueError("model_path必须是字典格式 {party: path}")
-        if not isinstance(output_path, dict):
-            raise ValueError("output_path必须是字典格式 {party: path}")
+        if not isinstance(input_model_dir, str) or not input_model_dir:
+            raise ValueError("input_model_dir必须是非空字符串")
+        if not isinstance(output_prediction, dict):
+            raise ValueError("output_prediction必须是字典格式 {party: path}")
 
-        parties = list(predict_data.keys())
+        parties = list(input_predict_data.keys())
 
         # 获取SPU设备
         spu_device = devices.get("spu")
@@ -373,8 +384,8 @@ def execute_ss_xgb_predict(devices: Dict[str, PYU], task_config: Dict) -> Dict:
             raise ValueError("devices中缺少'spu'设备")
 
         # 加载模型
-        logger.info(f"加载模型: {model_path}")
-        model_info = load_ss_xgb_model(model_path, spu_device, parties, devices)
+        logger.info(f"加载模型: {input_model_dir}")
+        model_info = load_ss_xgb_model(input_model_dir, spu_device, parties, devices)
 
         model: XgbModel = model_info["model"]
         features = model_info["features"]
@@ -387,12 +398,7 @@ def execute_ss_xgb_predict(devices: Dict[str, PYU], task_config: Dict) -> Dict:
 
         # 读取预测数据
         logger.info("读取垂直分区预测数据...")
-        pyu_input_paths = {}
-        for party in predict_data.keys():
-            pyu_device = devices.get(party)
-            if pyu_device is None:
-                raise ValueError(f"devices中缺少参与方'{party}'的PYU设备")
-            pyu_input_paths[pyu_device] = predict_data[party]
+        pyu_input_paths = {devices[party]: input_predict_data[party] for party in parties}
 
         vdf = sf.data.vertical.read_csv(pyu_input_paths)
         x_vdf = vdf[features]
@@ -459,7 +465,7 @@ def execute_ss_xgb_predict(devices: Dict[str, PYU], task_config: Dict) -> Dict:
         logger.info("预测结果保存成功（仅在接收方）")
 
         result = {
-            "output_path": output_path,
+            "output_prediction": output_prediction,
             "receiver_party": receiver_party,
             "num_predictions": num_predictions,
             "secure_mode": True,

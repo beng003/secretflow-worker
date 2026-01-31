@@ -413,18 +413,21 @@ def execute_secretflow_celery_task(self, task_params: Dict[str, Any]) -> Dict[st
         execution_time = time.time() - execution_start
         error_type = type(e).__name__
         error_msg = str(e)
+        
+        # 安全获取参数（防止task_params为None）
+        safe_task_params = task_params if isinstance(task_params, dict) else {}
+        task_id_val = safe_task_params.get("task_id", "unknown")
+        subtask_id_val = safe_task_params.get("subtask_id", "unknown")
+        execution_id_val = safe_task_params.get("execution_id", "unknown")
 
         logger.error(
-            "Celery SecretFlow任务失败: celery_id=%s, "
-            "task_id=%s, subtask_id=%s, execution_id=%s, "
-            "error=%s: %s, execution_time=%.2f秒",
-            celery_task_id,
-            task_params.get("task_id", "unknown"),
-            task_params.get("subtask_id", "unknown"),
-            task_params.get("execution_id", "unknown"),
-            error_type,
-            error_msg,
-            execution_time,
+            f"Celery SecretFlow任务失败: "
+            f"celery_id={celery_task_id}, "
+            f"task_id={task_id_val}, "
+            f"subtask_id={subtask_id_val}, "
+            f"execution_id={execution_id_val}, "
+            f"error={error_type}: {error_msg}, "
+            f"execution_time={execution_time:.2f}秒",
             exc_info=True,
         )
 
@@ -432,9 +435,9 @@ def execute_secretflow_celery_task(self, task_params: Dict[str, Any]) -> Dict[st
         self.update_state(
             state="FAILURE",
             meta={
-                "task_id": task_params.get("task_id"),
-                "subtask_id": task_params.get("subtask_id"),
-                "execution_id": task_params.get("execution_id"),
+                "task_id": task_id_val,
+                "subtask_id": subtask_id_val,
+                "execution_id": execution_id_val,
                 "error": error_msg,
                 "error_type": error_type,
                 "execution_time": execution_time,

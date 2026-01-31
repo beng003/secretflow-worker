@@ -27,7 +27,7 @@ def execute_biclassification_eval(devices: Dict[str, PYU], task_config: Dict) ->
     Args:
         devices: 设备字典
         task_config: 任务配置，包含:
-            - prediction_data: Dict[str, str] - 预测结果数据路径字典
+            - input_prediction_data: Dict[str, str] - 预测结果数据路径字典
             - label_column: str - 真实标签列名
             - prediction_column: str - 预测概率列名
             - bucket_size: Optional[int] - 分桶数量，默认10
@@ -39,13 +39,13 @@ def execute_biclassification_eval(devices: Dict[str, PYU], task_config: Dict) ->
     logger.info("开始执行二分类模型评估任务")
 
     try:
-        prediction_data = task_config["prediction_data"]
+        input_prediction_data = task_config["input_prediction_data"]
         label_column = task_config["label_column"]
         prediction_column = task_config["prediction_column"]
         bucket_size = task_config.get("bucket_size", 10)
         output_report = task_config["output_report"]
 
-        parties = list(prediction_data.keys())
+        parties = list(input_prediction_data.keys())
         logger.info(f"二分类评估配置: parties={parties}, label={label_column}, pred={prediction_column}")
 
         # 验证设备
@@ -54,7 +54,7 @@ def execute_biclassification_eval(devices: Dict[str, PYU], task_config: Dict) ->
                 raise ValueError(f"devices中缺少参与方'{party}'的PYU设备")
 
         # 验证输入文件
-        for party, path in prediction_data.items():
+        for party, path in input_prediction_data.items():
             if not os.path.exists(path):
                 raise ValueError(f"预测数据文件不存在: {path}")
 
@@ -65,7 +65,7 @@ def execute_biclassification_eval(devices: Dict[str, PYU], task_config: Dict) ->
 
         # 读取预测数据
         logger.info("读取预测数据...")
-        pyu_input_paths = {devices[party]: prediction_data[party] for party in parties}
+        pyu_input_paths = {devices[party]: input_prediction_data[party] for party in parties}
         vdf: VDataFrame = sf.data.vertical.read_csv(pyu_input_paths)
 
         # 创建二分类评估器

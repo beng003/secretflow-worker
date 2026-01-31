@@ -28,7 +28,7 @@ def _validate_ss_lr_config(task_config: Dict) -> None:
     Raises:
         ValueError: 配置验证失败
     """
-    required_fields = ["train_data", "features", "label", "label_party", "model_output"]
+    required_fields = ["train_data", "features", "label", "label_party", "model_dir"]
 
     for field in required_fields:
         if field not in task_config:
@@ -63,16 +63,9 @@ def _validate_ss_lr_config(task_config: Dict) -> None:
     if label_party not in train_data:
         raise ValueError(f"label_party '{label_party}' 不在train_data的参与方中")
 
-    model_output = task_config["model_output"]
-    if not isinstance(model_output, dict):
-        raise ValueError("model_output必须是字典类型 {party: path}")
-
-    if not model_output:
-        raise ValueError("model_output不能为空")
-
-    for party, path in model_output.items():
-        if not isinstance(path, str) or not path:
-            raise ValueError(f"参与方'{party}'的model_output路径必须是非空字符串")
+    model_dir = task_config["model_dir"]
+    if not isinstance(model_dir, str) or not model_dir:
+        raise ValueError("model_dir必须是非空字符串")
 
     params = task_config.get("params", {})
     if not isinstance(params, dict):
@@ -105,13 +98,13 @@ def _save_ss_lr_model(
     reg_type: str,
     penalty: str,
     l2_norm: float,
-    model_output: Dict[str, str],
+    model_dir: str,
     spu_device: SPU,
 ) -> None:
     """
-    安全保存SS-LR模型到指定文件夹（不解密）
+    安全保存SS-LR模型到指定文件夹（不解密），自动为每个参与方创建子目录
 
-    使用SPU的dump机制保存密文分片，每个参与方只保存自己的密文部分到指定文件夹。
+    使用SPU的dump机制保存密文分片，每个参与方只保存自己的密文部分到子目录。
 
     Args:
         model: 训练好的SSRegression模型
@@ -126,10 +119,13 @@ def _save_ss_lr_model(
         reg_type: 回归类型
         penalty: 正则化类型
         l2_norm: L2正则化系数
-        model_output: 模型输出文件夹路径字典 {party: folder_path}
+        model_dir: 模型保存的根目录路径
         spu_device: SPU设备对象
     """
-    logger.info("开始保存模型到文件夹（安全模式：不解密）...")
+    logger.info(f"开始保存模型到: {model_dir}（安全模式：不解密）")
+
+    # 确保根目录存在
+    os.makedirs(model_dir, exist_ok=True)
 
     # 获取LinearModel对象
     linear_model = model.save_model()
@@ -156,58 +152,41 @@ def _save_ss_lr_model(
         "weights_encrypted": True,
     }
 
-    # 为每个参与方创建文件夹并保存密文分片和元数据
+    # 在根目录保存全局元数据（供Driver端读取）
+    global_meta_path = os.path.join(model_dir, "model.meta.json")
+    with open(global_meta_path, "w") as f:
+        json.dump(model_meta, f, indent=2)
+    logger.info(f"全局元数据已保存到: {global_meta_path}")
+
+    # 为每个参与方创建子目录并保存密文分片
     share_paths = []
     for party in parties:
-        if party not in model_output:
-            raise ValueError(f"model_output中缺少参与方'{party}'的路径")
-
-        party_dir = model_output[party]
-
-        # 确保文件夹存在
+        party_dir = os.path.join(model_dir, party)
         os.makedirs(party_dir, exist_ok=True)
 
-        # 密文分片路径（保存在文件夹内）
+        # 密文分片路径（保存在子目录内）
         share_path = os.path.join(party_dir, "model.share")
         share_paths.append(share_path)
-
-        # 为每个参与方保存元数据文件到文件夹内
-        party_meta = {
-            "party": party,
-            "model_type": "ss_sgd_secure",
-            "parties": parties,
-            "features": features,
-            "label": label,
-            "label_party": label_party,
-            "reg_type": str(linear_model.reg_type),
-            "sig_type": str(linear_model.sig_type),
-            "training_params": model_meta["training_params"],
-            "secure_mode": True,
-            "created_at": datetime.now().isoformat(),
-        }
-
-        meta_path = os.path.join(party_dir, "model.meta.json")
-        with open(meta_path, "w") as f:
-            json.dump(party_meta, f, indent=2)
-        logger.info(f"参与方 {party} 的元数据已保存到: {meta_path}")
+        logger.info(f"参与方 {party} 的密文分片路径: {share_path}")
 
     # 使用SPU.dump保存密文分片
-    logger.info(f"保存密文分片到: {share_paths}")
+    logger.info(f"开始保存密文分片到: {share_paths}")
+    logger.info(f"权重对象类型: {type(linear_model.weights)}")
     spu_device.dump(linear_model.weights, share_paths)
 
     logger.info("密文分片保存成功（每个参与方只有自己的密文部分）")
 
 
 def load_ss_lr_model(
-    model_output: Dict[str, str], spu_device: SPU, parties: List[str]
+    model_dir: str, spu_device: SPU, parties: List[str]
 ) -> Dict:
     """
-    从指定文件夹安全加载SS-LR模型（从密文分片）
+    从指定文件夹安全加载SS-LR模型（从密文分片），自动从各参与方子目录读取
 
     使用SPU的load机制从密文分片重建模型，不需要解密。
 
     Args:
-        model_output: 模型输出文件夹路径字典 {party: folder_path}
+        model_dir: 模型保存的根目录路径
         spu_device: SPU设备对象
         parties: 参与方列表
 
@@ -218,29 +197,28 @@ def load_ss_lr_model(
         FileNotFoundError: 模型文件不存在
         ValueError: 模型文件格式错误
     """
-    logger.info("开始从文件夹加载模型（安全模式）...")
+    logger.info(f"开始从 {model_dir} 加载模型（安全模式）...")
 
-    # 验证所有参与方的文件夹路径都存在
-    for party in parties:
-        if party not in model_output:
-            raise ValueError(f"model_output中缺少参与方'{party}'的路径")
-        party_dir = model_output[party]
-        if not os.path.exists(party_dir):
-            raise FileNotFoundError(f"参与方 {party} 的模型文件夹不存在: {party_dir}")
+    # 验证根目录存在
+    if not os.path.exists(model_dir):
+        raise FileNotFoundError(f"模型根目录不存在: {model_dir}")
 
-    # 从第一个参与方的元数据文件读取模型信息
-    first_party = parties[0]
-    first_party_dir = model_output[first_party]
-    meta_path = os.path.join(first_party_dir, "model.meta.json")
+    # 从根目录读取全局元数据（Driver端可访问）
+    global_meta_path = os.path.join(model_dir, "model.meta.json")
+    if not os.path.exists(global_meta_path):
+        raise FileNotFoundError(f"模型元数据文件不存在: {global_meta_path}")
 
-    if not os.path.exists(meta_path):
-        raise FileNotFoundError(f"模型元数据文件不存在: {meta_path}")
-
-    logger.info(f"加载模型元数据: {meta_path}")
+    logger.info(f"加载模型元数据: {global_meta_path}")
 
     # 读取模型元数据
-    with open(meta_path, "r") as f:
+    with open(global_meta_path, "r") as f:
         model_meta = json.load(f)
+
+    # 验证所有参与方的子目录都存在（在Driver端检查）
+    for party in parties:
+        party_dir = os.path.join(model_dir, party)
+        if not os.path.exists(party_dir):
+            logger.warning(f"Driver端无法访问参与方 {party} 的子目录: {party_dir}（这在分布式环境中是正常的）")
 
     # 验证模型类型
     if model_meta.get("model_type") != "ss_sgd_secure":
@@ -249,19 +227,18 @@ def load_ss_lr_model(
     if not model_meta.get("secure_mode"):
         raise ValueError("此模型不是安全模式保存的")
 
-    # 构建密文分片路径（从文件夹内读取）
+    # 构建密文分片路径（从子目录内读取）
     share_paths = []
     for party in parties:
-        party_dir = model_output[party]
+        party_dir = os.path.join(model_dir, party)
         share_path = os.path.join(party_dir, "model.share")
-        if not os.path.exists(share_path):
-            raise FileNotFoundError(f"参与方 {party} 的密文分片不存在: {share_path}")
         share_paths.append(share_path)
 
-    logger.info(f"加载密文分片: {share_paths}")
+    logger.info(f"开始加载密文分片: {share_paths}")
 
-    # 使用SPU.load从密文分片重建SPUObject
+    # 使用SPU.load从密文分片重建 SPUObject（SPU会在各参与方端处理文件检查）
     spu_weights = spu_device.load(share_paths)
+    logger.info(f"密文分片加载成功，权重对象类型: {type(spu_weights)}")
 
     logger.info("密文分片加载成功，重建模型...")
 
@@ -305,7 +282,7 @@ def load_ss_lr_model(
         "label": model_meta["label"],
         "label_party": model_meta["label_party"],
         "parties": model_meta["parties"],
-        "training_params": model_meta["training_params"],
+        "training_params": model_meta.get("training_params", {}),
         "created_at": model_meta.get("created_at"),
         "secure_mode": True,
     }
@@ -322,11 +299,11 @@ def execute_ss_logistic_regression(devices: Dict[str, PYU], task_config: Dict) -
         devices: 设备字典，键为参与方名称，值为PYU设备对象
                  必须包含'spu'键对应SPU设备
         task_config: 任务配置，包含以下字段：
-            - train_data: Dict[str, str] - 训练数据路径字典
+            - input_train_data: Dict[str, str] - 训练数据路径字典
             - features: List[str] - 特征列名列表
             - label: str - 标签列名
             - label_party: str - 标签所属参与方
-            - model_output: Dict[str, str] - 模型输出路径字典 {party: path}
+            - output_model_dir: str - 模型保存的根目录路径
             - params: Dict - 可选训练参数
 
     Returns:
@@ -339,12 +316,12 @@ def execute_ss_logistic_regression(devices: Dict[str, PYU], task_config: Dict) -
         _validate_ss_lr_config(task_config)
 
         # 获取配置
-        train_data = task_config["train_data"]
+        input_train_data = task_config["input_train_data"]
         features = task_config["features"]
         label = task_config["label"]
         label_party = task_config["label_party"]
-        model_output = task_config["model_output"]
-        parties = list(train_data.keys())
+        output_model_dir = task_config["output_model_dir"]
+        parties = list(input_train_data.keys())
 
         # 获取SPU设备
         spu_device = devices.get("spu")
@@ -420,27 +397,27 @@ def execute_ss_logistic_regression(devices: Dict[str, PYU], task_config: Dict) -
         logger.info("模型训练完成")
 
         # 安全保存模型（不解密）
-        logger.info(f"保存模型到: {model_output}（安全模式：不解密）")
+        logger.info(f"保存模型到: {output_model_dir}（安全模式：不解密）")
         _save_ss_lr_model(
-            model,
-            features,
-            label,
-            label_party,
-            parties,
-            epochs,
-            learning_rate,
-            batch_size,
-            sig_type,
-            reg_type,
-            penalty,
-            l2_norm,
-            model_output,
-            spu_device,
+            model=model,
+            features=features,
+            label=label,
+            label_party=label_party,
+            parties=parties,
+            epochs=epochs,
+            learning_rate=learning_rate,
+            batch_size=batch_size,
+            sig_type=sig_type,
+            reg_type=reg_type,
+            penalty=penalty,
+            l2_norm=l2_norm,
+            model_dir=output_model_dir,
+            spu_device=spu_device,
         )
         logger.info("模型保存成功（安全模式）")
 
         result = {
-            "model_path": model_output,
+            "output_model_dir": output_model_dir,
             "parties": parties,
             "features": features,
             "label": label,
@@ -478,9 +455,9 @@ def execute_ss_lr_predict(devices: Dict[str, PYU], task_config: Dict) -> Dict:
     Args:
         devices: 设备字典
         task_config: 任务配置，包含以下字段：
-            - model_path: Dict[str, str] - 模型文件路径字典 {party: path}
-            - predict_data: Dict[str, str] - 预测数据路径字典
-            - output_path: Dict[str, str] - 预测结果输出路径字典 {party: path}
+            - input_model_dir: str - 模型保存的根目录路径
+            - input_predict_data: Dict[str, str] - 预测数据路径字典
+            - output_prediction: Dict[str, str] - 预测结果输出路径字典 {party: path}
             - receiver_party: str - 接收预测结果的参与方（可选）
 
     Returns:
@@ -490,22 +467,22 @@ def execute_ss_lr_predict(devices: Dict[str, PYU], task_config: Dict) -> Dict:
         logger.info("开始执行SS-LR预测任务（安全模式）")
 
         # 验证配置
-        required_fields = ["model_path", "predict_data", "output_path"]
+        required_fields = ["input_model_dir", "input_predict_data", "output_prediction"]
         for field in required_fields:
             if field not in task_config:
                 raise ValueError(f"缺少必需字段: {field}")
 
-        model_path = task_config["model_path"]
-        predict_data = task_config["predict_data"]
-        output_path = task_config["output_path"]
+        input_model_dir = task_config["input_model_dir"]
+        input_predict_data = task_config["input_predict_data"]
+        output_prediction = task_config["output_prediction"]
 
         # 验证路径格式
-        if not isinstance(model_path, dict):
-            raise ValueError("model_path必须是字典格式 {party: path}")
-        if not isinstance(output_path, dict):
-            raise ValueError("output_path必须是字典格式 {party: path}")
+        if not isinstance(input_model_dir, str) or not input_model_dir:
+            raise ValueError("input_model_dir必须是非空字符串")
+        if not isinstance(output_prediction, dict):
+            raise ValueError("output_prediction必须是字典格式 {party: path}")
 
-        parties = list(predict_data.keys())
+        parties = list(input_predict_data.keys())
 
         # 获取SPU设备
         spu_device = devices.get("spu")
@@ -513,8 +490,8 @@ def execute_ss_lr_predict(devices: Dict[str, PYU], task_config: Dict) -> Dict:
             raise ValueError("devices中缺少'spu'设备")
 
         # 加载模型（安全模式）
-        logger.info(f"加载模型: {model_path}（安全模式）")
-        model_info = load_ss_lr_model(model_path, spu_device, parties)
+        logger.info(f"加载模型: {input_model_dir}（安全模式）")
+        model_info = load_ss_lr_model(input_model_dir, spu_device, parties)
 
         model: SSRegression = model_info["model"]
         features = model_info["features"]
@@ -528,11 +505,11 @@ def execute_ss_lr_predict(devices: Dict[str, PYU], task_config: Dict) -> Dict:
         # 读取预测数据
         logger.info("读取垂直分区预测数据...")
         pyu_input_paths = {}
-        for party in predict_data.keys():
+        for party in input_predict_data.keys():
             pyu_device = devices.get(party)
             if pyu_device is None:
                 raise ValueError(f"devices中缺少参与方'{party}'的PYU设备")
-            pyu_input_paths[pyu_device] = predict_data[party]
+            pyu_input_paths[pyu_device] = input_predict_data[party]
 
         vdf = sf.data.vertical.read_csv(pyu_input_paths)
         x_vdf = vdf[features]
@@ -602,7 +579,7 @@ def execute_ss_lr_predict(devices: Dict[str, PYU], task_config: Dict) -> Dict:
         logger.info("预测结果保存成功（仅在接收方）")
 
         result = {
-            "output_path": output_path,
+            "output_prediction": output_prediction,
             "receiver_party": receiver_party,
             "num_predictions": num_predictions,
             "secure_mode": True,
