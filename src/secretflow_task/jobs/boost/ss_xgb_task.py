@@ -59,37 +59,28 @@ def _save_ss_xgb_model(
         "secure_mode": True,
     }
 
-    # 为每个参与方保存模型
+    # 为每个参与方保存模型到指定文件夹
     for party in parties:
         if party not in model_output:
             raise ValueError(f"model_output中缺少参与方'{party}'的路径")
 
-        party_path = model_output[party]
+        party_dir = model_output[party]
 
-        # 确保目录存在
-        party_dir = os.path.dirname(party_path)
-        if party_dir:
-            os.makedirs(party_dir, exist_ok=True)
+        # 确保文件夹存在
+        os.makedirs(party_dir, exist_ok=True)
 
-        # 保存元数据
-        meta_path = f"{party_path}.meta.json"
+        # 保存元数据到文件夹内
+        meta_path = os.path.join(party_dir, "model.meta.json")
         with open(meta_path, "w") as f:
             json.dump(model_meta, f, indent=2)
         logger.info(f"参与方 {party} 的元数据已保存到: {meta_path}")
 
     # 保存树结构和权重（每个参与方的树分片）
     for tree_idx, (tree, weight) in enumerate(zip(model.trees, model.weights)):
-        # 为每个参与方保存树的分片
-        tree_paths = []
-        for party in parties:
-            party_path = model_output[party]
-            tree_path = f"{party_path}.tree_{tree_idx}.pkl"
-            tree_paths.append(tree_path)
-
-        # 保存树结构（每个参与方只保存自己的部分）
+        # 保存树结构（每个参与方只保存自己的部分到文件夹内）
         for party, pyu in zip(parties, tree.keys()):
-            party_path = model_output[party]
-            tree_path = f"{party_path}.tree_{tree_idx}.pkl"
+            party_dir = model_output[party]
+            tree_path = os.path.join(party_dir, f"tree_{tree_idx}.pkl")
             tree_obj = tree[pyu]
 
             # 使用pickle保存PYUObject
@@ -99,9 +90,10 @@ def _save_ss_xgb_model(
                 tree_obj, tree_path
             )
 
-        # 保存权重（SPUObject，需要dump到各参与方）
+        # 保存权重（SPUObject，需要dump到各参与方的文件夹内）
         weight_paths = [
-            f"{model_output[party]}.weight_{tree_idx}.share" for party in parties
+            os.path.join(model_output[party], f"weight_{tree_idx}.share")
+            for party in parties
         ]
         spu_device.dump(weight, weight_paths)
 
@@ -130,15 +122,18 @@ def load_ss_xgb_model(
     """
     logger.info("开始加载SS-XGBoost模型...")
 
-    # 验证所有参与方的路径都存在
+    # 验证所有参与方的文件夹路径都存在
     for party in parties:
         if party not in model_output:
             raise ValueError(f"model_output中缺少参与方'{party}'的路径")
+        party_dir = model_output[party]
+        if not os.path.exists(party_dir):
+            raise FileNotFoundError(f"参与方 {party} 的模型文件夹不存在: {party_dir}")
 
     # 从第一个参与方的元数据文件读取模型信息
     first_party = parties[0]
-    first_party_path = model_output[first_party]
-    meta_path = f"{first_party_path}.meta.json"
+    first_party_dir = model_output[first_party]
+    meta_path = os.path.join(first_party_dir, "model.meta.json")
 
     if not os.path.exists(meta_path):
         raise FileNotFoundError(f"模型元数据文件不存在: {meta_path}")
@@ -171,8 +166,8 @@ def load_ss_xgb_model(
         tree = {}
         for party in parties:
             pyu = devices[party]
-            party_path = model_output[party]
-            tree_path = f"{party_path}.tree_{tree_idx}.pkl"
+            party_dir = model_output[party]
+            tree_path = os.path.join(party_dir, f"tree_{tree_idx}.pkl")
 
             if not os.path.exists(tree_path):
                 raise FileNotFoundError(f"树文件不存在: {tree_path}")
@@ -185,7 +180,8 @@ def load_ss_xgb_model(
 
         # 加载权重
         weight_paths = [
-            f"{model_output[party]}.weight_{tree_idx}.share" for party in parties
+            os.path.join(model_output[party], f"weight_{tree_idx}.share")
+            for party in parties
         ]
         for weight_path in weight_paths:
             if not os.path.exists(weight_path):

@@ -109,9 +109,9 @@ def _save_ss_lr_model(
     spu_device: SPU,
 ) -> None:
     """
-    安全保存SS-LR模型（不解密）
+    安全保存SS-LR模型到指定文件夹（不解密）
 
-    使用SPU的dump机制保存密文分片，每个参与方只保存自己的密文部分。
+    使用SPU的dump机制保存密文分片，每个参与方只保存自己的密文部分到指定文件夹。
 
     Args:
         model: 训练好的SSRegression模型
@@ -126,10 +126,10 @@ def _save_ss_lr_model(
         reg_type: 回归类型
         penalty: 正则化类型
         l2_norm: L2正则化系数
-        model_output: 模型输出路径字典 {party: path}
+        model_output: 模型输出文件夹路径字典 {party: folder_path}
         spu_device: SPU设备对象
     """
-    logger.info("开始保存模型（安全模式：不解密）...")
+    logger.info("开始保存模型到文件夹（安全模式：不解密）...")
 
     # 获取LinearModel对象
     linear_model = model.save_model()
@@ -144,7 +144,6 @@ def _save_ss_lr_model(
         "label": label,
         "label_party": label_party,
         "parties": parties,
-        "model_output_paths": model_output,
         "training_params": {
             "epochs": epochs,
             "learning_rate": learning_rate,
@@ -157,28 +156,25 @@ def _save_ss_lr_model(
         "weights_encrypted": True,
     }
 
-    # 为每个参与方保存密文分片和元数据
+    # 为每个参与方创建文件夹并保存密文分片和元数据
     share_paths = []
     for party in parties:
         if party not in model_output:
             raise ValueError(f"model_output中缺少参与方'{party}'的路径")
 
-        party_path = model_output[party]
+        party_dir = model_output[party]
 
-        # 确保目录存在
-        party_dir = os.path.dirname(party_path)
-        if party_dir:
-            os.makedirs(party_dir, exist_ok=True)
+        # 确保文件夹存在
+        os.makedirs(party_dir, exist_ok=True)
 
-        # 密文分片路径
-        share_path = party_path
+        # 密文分片路径（保存在文件夹内）
+        share_path = os.path.join(party_dir, "model.share")
         share_paths.append(share_path)
 
-        # 为每个参与方保存元数据文件
+        # 为每个参与方保存元数据文件到文件夹内
         party_meta = {
             "party": party,
             "model_type": "ss_sgd_secure",
-            "share_path": share_path,
             "parties": parties,
             "features": features,
             "label": label,
@@ -190,7 +186,7 @@ def _save_ss_lr_model(
             "created_at": datetime.now().isoformat(),
         }
 
-        meta_path = f"{party_path}.meta.json"
+        meta_path = os.path.join(party_dir, "model.meta.json")
         with open(meta_path, "w") as f:
             json.dump(party_meta, f, indent=2)
         logger.info(f"参与方 {party} 的元数据已保存到: {meta_path}")
@@ -206,12 +202,12 @@ def load_ss_lr_model(
     model_output: Dict[str, str], spu_device: SPU, parties: List[str]
 ) -> Dict:
     """
-    安全加载SS-LR模型（从密文分片）
+    从指定文件夹安全加载SS-LR模型（从密文分片）
 
     使用SPU的load机制从密文分片重建模型，不需要解密。
 
     Args:
-        model_output: 模型输出路径字典 {party: path}
+        model_output: 模型输出文件夹路径字典 {party: folder_path}
         spu_device: SPU设备对象
         parties: 参与方列表
 
@@ -222,17 +218,20 @@ def load_ss_lr_model(
         FileNotFoundError: 模型文件不存在
         ValueError: 模型文件格式错误
     """
-    logger.info("开始加载模型（安全模式）...")
+    logger.info("开始从文件夹加载模型（安全模式）...")
 
-    # 验证所有参与方的路径都存在
+    # 验证所有参与方的文件夹路径都存在
     for party in parties:
         if party not in model_output:
             raise ValueError(f"model_output中缺少参与方'{party}'的路径")
+        party_dir = model_output[party]
+        if not os.path.exists(party_dir):
+            raise FileNotFoundError(f"参与方 {party} 的模型文件夹不存在: {party_dir}")
 
     # 从第一个参与方的元数据文件读取模型信息
     first_party = parties[0]
-    first_party_path = model_output[first_party]
-    meta_path = f"{first_party_path}.meta.json"
+    first_party_dir = model_output[first_party]
+    meta_path = os.path.join(first_party_dir, "model.meta.json")
 
     if not os.path.exists(meta_path):
         raise FileNotFoundError(f"模型元数据文件不存在: {meta_path}")
@@ -250,10 +249,11 @@ def load_ss_lr_model(
     if not model_meta.get("secure_mode"):
         raise ValueError("此模型不是安全模式保存的")
 
-    # 构建密文分片路径
+    # 构建密文分片路径（从文件夹内读取）
     share_paths = []
     for party in parties:
-        share_path = model_output[party]
+        party_dir = model_output[party]
+        share_path = os.path.join(party_dir, "model.share")
         if not os.path.exists(share_path):
             raise FileNotFoundError(f"参与方 {party} 的密文分片不存在: {share_path}")
         share_paths.append(share_path)
