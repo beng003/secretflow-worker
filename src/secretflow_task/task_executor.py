@@ -13,7 +13,6 @@ from secretflow_task.cluster_initializer import SecretFlowClusterInitializer
 from secretflow_task.device_manager import DeviceManager
 from secretflow_task.task_dispatcher import TaskDispatcher
 from utils.log import logger
-from utils.status_notifier import _publish_status
 from utils.exceptions import ClusterInitError, DeviceConfigError, AlgorithmError
 
 
@@ -75,6 +74,7 @@ def execute_secretflow_task(
     spu_config: Dict[str, Any],
     heu_config: Dict[str, Any],
     task_config: Dict[str, Any],
+    celery_task=None,
 ) -> Dict[str, Any]:
     """SecretFlow任务执行主函数
 
@@ -131,20 +131,20 @@ def execute_secretflow_task(
             f"  开始时间: {datetime.now().isoformat()}\n" + "=" * 80
         )
 
-        # 发送任务开始状态
-        _publish_status(
-            execution_id,
-            "RUNNING",
-            {
-                "stage": "task_started",
-                "task_id": task_id,
-                "subtask_id": subtask_id,
-                "execution_id": execution_id,
-                "task_type": task_config.get("task_type"),
-                "started_at": datetime.now().isoformat(),
-                "progress": 0.0,
-            },
-        )
+        # 更新状态：任务开始
+        if celery_task:
+            celery_task.update_state(
+                state="PROGRESS",
+                meta={
+                    "stage": "task_started",
+                    "task_id": task_id,
+                    "subtask_id": subtask_id,
+                    "execution_id": execution_id,
+                    "task_type": task_config.get("task_type"),
+                    "progress": 0.0,
+                    "message": "任务开始执行",
+                },
+            )
 
         # ========================================
         # 第1步：初始化SecretFlow集群
@@ -152,17 +152,19 @@ def execute_secretflow_task(
         logger.info("\n[1/4] 初始化SecretFlow集群...")
         cluster_init_start = time.time()
 
-        _publish_status(
-            execution_id,
-            "RUNNING",
-            {
-                "stage": "cluster_init",
-                "task_id": task_id,
-                "subtask_id": subtask_id,
-                "execution_id": execution_id,
-                "progress": 0.1,
-            },
-        )
+        # 更新状态：集群初始化中
+        if celery_task:
+            celery_task.update_state(
+                state="PROGRESS",
+                meta={
+                    "stage": "cluster_init",
+                    "task_id": task_id,
+                    "subtask_id": subtask_id,
+                    "execution_id": execution_id,
+                    "progress": 0.1,
+                    "message": "正在初始化SecretFlow集群",
+                },
+            )
 
         cluster_initializer = SecretFlowClusterInitializer()
         if not cluster_initializer.initialize_cluster(sf_init_config):
@@ -171,18 +173,20 @@ def execute_secretflow_task(
         cluster_init_time = time.time() - cluster_init_start
         logger.info(f"  ✓ 集群初始化完成，耗时: {cluster_init_time:.2f}秒")
 
-        _publish_status(
-            execution_id,
-            "RUNNING",
-            {
-                "stage": "cluster_initialized",
-                "task_id": task_id,
-                "subtask_id": subtask_id,
-                "execution_id": execution_id,
-                "cluster_init_time": cluster_init_time,
-                "progress": 0.2,
-            },
-        )
+        # 更新状态：集群初始化完成
+        if celery_task:
+            celery_task.update_state(
+                state="PROGRESS",
+                meta={
+                    "stage": "cluster_init_completed",
+                    "task_id": task_id,
+                    "subtask_id": subtask_id,
+                    "execution_id": execution_id,
+                    "progress": 0.2,
+                    "message": f"集群初始化完成，耗时 {cluster_init_time:.2f}秒",
+                    "cluster_init_time": cluster_init_time,
+                },
+            )
 
         # ========================================
         # 第2步：初始化计算设备
@@ -190,17 +194,19 @@ def execute_secretflow_task(
         logger.info("\n[2/4] 初始化计算设备...")
         device_init_start = time.time()
 
-        _publish_status(
-            execution_id,
-            "RUNNING",
-            {
-                "stage": "device_creation",
-                "task_id": task_id,
-                "subtask_id": subtask_id,
-                "execution_id": execution_id,
-                "progress": 0.3,
-            },
-        )
+        # 更新状态：设备初始化中
+        if celery_task:
+            celery_task.update_state(
+                state="PROGRESS",
+                meta={
+                    "stage": "device_init",
+                    "task_id": task_id,
+                    "subtask_id": subtask_id,
+                    "execution_id": execution_id,
+                    "progress": 0.25,
+                    "message": "正在初始化计算设备",
+                },
+            )
 
         device_manager = DeviceManager.get_instance()
 
@@ -220,19 +226,21 @@ def execute_secretflow_task(
             f"    初始化设备: {list(devices.keys())}"
         )
 
-        _publish_status(
-            execution_id,
-            "RUNNING",
-            {
-                "stage": "devices_initialized",
-                "task_id": task_id,
-                "subtask_id": subtask_id,
-                "execution_id": execution_id,
-                "device_init_time": device_init_time,
-                "initialized_devices": list(devices.keys()),
-                "progress": 0.4,
-            },
-        )
+        # 更新状态：设备初始化完成
+        if celery_task:
+            celery_task.update_state(
+                state="PROGRESS",
+                meta={
+                    "stage": "device_init_completed",
+                    "task_id": task_id,
+                    "subtask_id": subtask_id,
+                    "execution_id": execution_id,
+                    "progress": 0.3,
+                    "message": f"设备初始化完成，耗时 {device_init_time:.2f}秒",
+                    "device_init_time": device_init_time,
+                    "devices": list(devices.keys()),
+                },
+            )
 
         # ========================================
         # 第3步：执行算法任务
@@ -247,18 +255,20 @@ def execute_secretflow_task(
 
         logger.info(f"  任务类型: {task_type}")
 
-        _publish_status(
-            execution_id,
-            "RUNNING",
-            {
-                "stage": "task_execution",
-                "task_id": task_id,
-                "subtask_id": subtask_id,
-                "execution_id": execution_id,
-                "task_type": task_type,
-                "progress": 0.5,
-            },
-        )
+        # 更新状态：算法执行中
+        if celery_task:
+            celery_task.update_state(
+                state="PROGRESS",
+                meta={
+                    "stage": "algorithm_executing",
+                    "task_id": task_id,
+                    "subtask_id": subtask_id,
+                    "execution_id": execution_id,
+                    "task_type": task_type,
+                    "progress": 0.4,
+                    "message": f"正在执行算法: {task_type}",
+                },
+            )
 
         # 使用TaskDispatcher分发任务
         logger.info(f"  开始执行任务: {task_type}")
@@ -266,6 +276,21 @@ def execute_secretflow_task(
 
         algorithm_exec_time = time.time() - algorithm_exec_start
         logger.info(f"  ✓ 任务执行完成，耗时: {algorithm_exec_time:.2f}秒")
+
+        # 更新状态：算法执行完成
+        if celery_task:
+            celery_task.update_state(
+                state="PROGRESS",
+                meta={
+                    "stage": "algorithm_completed",
+                    "task_id": task_id,
+                    "subtask_id": subtask_id,
+                    "execution_id": execution_id,
+                    "progress": 0.9,
+                    "message": f"算法执行完成，耗时 {algorithm_exec_time:.2f}秒",
+                    "algorithm_exec_time": algorithm_exec_time,
+                },
+            )
 
         # ========================================
         # 第4步：收集性能指标
@@ -307,21 +332,20 @@ def execute_secretflow_task(
             },
         }
 
-        # 发送任务成功状态
-        _publish_status(
-            execution_id,
-            "SUCCESS",
-            {
-                "stage": "task_completed",
-                "task_id": task_id,
-                "subtask_id": subtask_id,
-                "execution_id": execution_id,
-                "result": algorithm_result,
-                "performance_metrics": performance_metrics,
-                "completed_at": datetime.now().isoformat(),
-                "progress": 1.0,
-            },
-        )
+        # 更新状态：任务即将完成
+        if celery_task:
+            celery_task.update_state(
+                state="PROGRESS",
+                meta={
+                    "stage": "task_completed",
+                    "task_id": task_id,
+                    "subtask_id": subtask_id,
+                    "execution_id": execution_id,
+                    "progress": 0.95,
+                    "message": "任务执行成功，正在收集结果",
+                    "total_execution_time": performance_metrics["total_execution_time"],
+                },
+            )
 
         logger.info(
             "\n" + "=" * 80 + "\n"
@@ -336,40 +360,8 @@ def execute_secretflow_task(
         return final_result
 
     except Exception as e:
-        # 计算当前执行时间
-        execution_time = time.time() - start_time
-        error_type = type(e).__name__
-        error_msg = str(e)
-
-        error_report = (
-            "\n" + "=" * 80 + "\n"
-            f"SecretFlow任务执行失败\n"
-            f"  任务ID: {task_id}\n"
-            f"  子任务ID: {subtask_id}\n"
-            f"  执行ID: {execution_id}\n"
-            f"  错误类型: {str(error_type)}\n"
-            f"  错误信息: {str(error_msg)}\n"
-            f"  已执行时间: {execution_time:.2f}秒\n" + "=" * 80
-        )
-        logger.error(error_report, exc_info=True)
-
-        # 发送任务失败状态
-        _publish_status(
-            execution_id,
-            "FAILURE",
-            {
-                "stage": "task_failed",
-                "task_id": task_id,
-                "subtask_id": subtask_id,
-                "execution_id": execution_id,
-                "error": error_msg,
-                "error_type": error_type,
-                "execution_time": execution_time,
-                "failed_at": datetime.now().isoformat(),
-            },
-        )
-
-        # 重新抛出异常，但先清理资源
+        # 异常会向上传播到celery_tasks层统一处理
+        # 这里只负责资源清理，不记录日志和发送状态
         raise
 
     finally:

@@ -102,18 +102,10 @@ class TaskDispatcher:
         task_func = cls.TASK_REGISTRY[task_type]
         logger.info(f"开始执行任务: task_type='{task_type}', func={task_func.__name__}")
 
-        try:
-            result = wait(task_func(devices, task_config))
-            logger.info(f"任务执行成功: task_type='{task_type}'")
-            return result
-        except Exception as e:
-            logger.error(
-                "任务执行失败: task_type='%s', error_type=%s, error_msg=%s",
-                task_type,
-                type(e).__name__,
-                str(e),
-            )
-            raise
+        # 执行任务函数，异常会向上传播到celery_tasks层统一处理
+        result = wait(task_func(devices, task_config))
+        logger.info(f"任务执行成功: task_type='{task_type}'")
+        return result
 
     @classmethod
     def list_supported_tasks(cls) -> List[str]:

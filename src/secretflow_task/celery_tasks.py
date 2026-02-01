@@ -15,7 +15,6 @@ from celery.exceptions import SoftTimeLimitExceeded
 from celery_app import celery_app
 from .task_executor import execute_secretflow_task
 from utils.log import logger
-from utils.status_notifier import _publish_status
 from utils.exceptions import ClusterInitError, DeviceConfigError
 
 
@@ -61,25 +60,21 @@ class SecretFlowTask(Task):
             str(exc),
         )
 
-        # 发送重试状态通知
-        try:
-            _publish_status(
-                execution_id,
-                "RETRY",
-                {
-                    "stage": "task_retrying",
-                    "task_id": task_params.get("task_id"),
-                    "subtask_id": task_params.get("subtask_id"),
-                    "execution_id": execution_id,
-                    "retry_count": self.request.retries,
-                    "max_retries": self.max_retries,
-                    "error": str(exc),
-                    "error_type": type(exc).__name__,
-                    "next_retry_at": datetime.now().isoformat(),
-                },
-            )
-        except Exception as e:
-            logger.error("发送重试状态失败: %s", e)
+        # 更新重试状态
+        self.update_state(
+            state="RETRY",
+            meta={
+                "stage": "task_retrying",
+                "task_id": task_params.get("task_id"),
+                "subtask_id": task_params.get("subtask_id"),
+                "execution_id": execution_id,
+                "retry_count": self.request.retries,
+                "max_retries": self.max_retries,
+                "error": str(exc),
+                "error_type": type(exc).__name__,
+                "next_retry_at": datetime.now().isoformat(),
+            },
+        )
 
     def on_failure(self, exc, task_id, args, kwargs, einfo):
         """任务失败时的回调
@@ -102,25 +97,21 @@ class SecretFlowTask(Task):
             exc_info=True,
         )
 
-        # 发送失败状态通知（额外保障）
-        try:
-            _publish_status(
-                execution_id,
-                "FAILURE",
-                {
-                    "stage": "task_failed_final",
-                    "task_id": task_params.get("task_id"),
-                    "subtask_id": task_params.get("subtask_id"),
-                    "execution_id": execution_id,
-                    "celery_task_id": task_id,
-                    "error": str(exc),
-                    "error_type": type(exc).__name__,
-                    "retries_exhausted": self.request.retries >= self.max_retries,
-                    "failed_at": datetime.now().isoformat(),
-                },
-            )
-        except Exception as e:
-            logger.error("发送失败状态失败: %s", e)
+        # 更新失败状态（额外保障）
+        self.update_state(
+            state="FAILURE",
+            meta={
+                "stage": "task_failed_final",
+                "task_id": task_params.get("task_id"),
+                "subtask_id": task_params.get("subtask_id"),
+                "execution_id": execution_id,
+                "celery_task_id": task_id,
+                "error": str(exc),
+                "error_type": type(exc).__name__,
+                "retries_exhausted": self.request.retries >= self.max_retries,
+                "failed_at": datetime.now().isoformat(),
+            },
+        )
 
     def on_success(self, retval, task_id, args, kwargs):
         """任务成功时的回调
@@ -137,50 +128,6 @@ class SecretFlowTask(Task):
         logger.info(
             f"SecretFlow任务成功: celery_task_id={task_id}, execution_id={execution_id}"
         )
-
-
-def _serialize_task_params(task_params: Dict[str, Any]) -> str:
-    """序列化任务参数
-
-    将任务参数转换为JSON字符串，便于传输和存储。
-
-    Args:
-        task_params: 任务参数字典
-
-    Returns:
-        str: JSON序列化后的字符串
-
-    Raises:
-        ValueError: 参数无法序列化
-    """
-    try:
-        return json.dumps(task_params, ensure_ascii=False, default=str)
-    except (TypeError, ValueError) as e:
-        error_msg = f"任务参数序列化失败: {e}"
-        logger.error(error_msg)
-        raise ValueError(error_msg) from e
-
-
-def _deserialize_task_params(serialized_params: str) -> Dict[str, Any]:
-    """反序列化任务参数
-
-    将JSON字符串转换回任务参数字典。
-
-    Args:
-        serialized_params: JSON序列化的参数字符串
-
-    Returns:
-        Dict[str, Any]: 任务参数字典
-
-    Raises:
-        ValueError: 参数无法反序列化
-    """
-    try:
-        return json.loads(serialized_params)
-    except (TypeError, ValueError, json.JSONDecodeError) as e:
-        error_msg = f"任务参数反序列化失败: {e}"
-        logger.error(error_msg)
-        raise ValueError(error_msg) from e
 
 
 def _validate_task_params(task_params: Dict[str, Any]) -> None:
@@ -283,35 +230,7 @@ def execute_secretflow_celery_task(self, task_params: Dict[str, Any]) -> Dict[st
             f"  重试次数: {self.request.retries}\n" + "=" * 80
         )
 
-        # 发送Celery任务开始状态
-        _publish_status(
-            execution_id,
-            "RUNNING",
-            {
-                "stage": "celery_task_started",
-                "task_id": task_id,
-                "subtask_id": subtask_id,
-                "execution_id": execution_id,
-                "celery_task_id": celery_task_id,
-                "task_type": task_config.get("task_type"),
-                "retry_count": self.request.retries,
-                "started_at": datetime.now().isoformat(),
-            },
-        )
-
-        # 3. 更新任务状态为STARTED
-        self.update_state(
-            state="STARTED",
-            meta={
-                "task_id": task_id,
-                "subtask_id": subtask_id,
-                "execution_id": execution_id,
-                "task_type": task_config.get("task_type"),
-                "started_at": datetime.now().isoformat(),
-            },
-        )
-
-        # 4. 执行SecretFlow任务
+        # 3. 执行SecretFlow任务（状态更新由task_executor负责）
         logger.info("调用SecretFlow任务执行器...")
 
         try:
@@ -323,6 +242,7 @@ def execute_secretflow_celery_task(self, task_params: Dict[str, Any]) -> Dict[st
                 spu_config=spu_config,
                 heu_config=heu_config,
                 task_config=task_config,
+                celery_task=self,
             )
         except SoftTimeLimitExceeded:
             # 任务超时
@@ -333,10 +253,10 @@ def execute_secretflow_celery_task(self, task_params: Dict[str, Any]) -> Dict[st
 
             logger.error(error_msg)
 
-            _publish_status(
-                execution_id,
-                "FAILURE",
-                {
+            # 更新超时失败状态
+            self.update_state(
+                state="FAILURE",
+                meta={
                     "stage": "task_timeout",
                     "task_id": task_id,
                     "subtask_id": subtask_id,
@@ -369,18 +289,7 @@ def execute_secretflow_celery_task(self, task_params: Dict[str, Any]) -> Dict[st
         # 6. 构建完整结果
         final_result = {**result, "celery_metadata": celery_metadata}
 
-        # 7. 更新任务状态为SUCCESS
-        self.update_state(
-            state="SUCCESS",
-            meta={
-                "task_id": task_id,
-                "subtask_id": subtask_id,
-                "execution_id": execution_id,
-                "result": final_result,
-                "completed_at": datetime.now().isoformat(),
-            },
-        )
-
+        # 7. 任务成功完成（SUCCESS状态由Celery自动设置）
         logger.info(
             "=" * 80 + "\n"
             "Celery SecretFlow任务完成\n"
@@ -420,16 +329,18 @@ def execute_secretflow_celery_task(self, task_params: Dict[str, Any]) -> Dict[st
         subtask_id_val = safe_task_params.get("subtask_id", "unknown")
         execution_id_val = safe_task_params.get("execution_id", "unknown")
 
-        logger.error(
-            f"Celery SecretFlow任务失败: "
-            f"celery_id={celery_task_id}, "
-            f"task_id={task_id_val}, "
-            f"subtask_id={subtask_id_val}, "
-            f"execution_id={execution_id_val}, "
-            f"error={error_type}: {error_msg}, "
-            f"execution_time={execution_time:.2f}秒",
-            exc_info=True,
+        error_report = (
+            "\n" + "=" * 80 + "\n"
+            f"SecretFlow任务执行失败\n"
+            f"  CELERY_ID: {celery_task_id}\n"
+            f"  任务ID: {task_id_val}\n"
+            f"  子任务ID: {subtask_id_val}\n"
+            f"  执行ID: {execution_id_val}\n"
+            f"  错误类型: {str(error_type)}\n"
+            f"  错误信息: {str(error_msg)}\n"
+            f"  已执行时间: {execution_time:.2f}秒\n" + "=" * 80
         )
+        logger.error(error_report, exc_info=True)
 
         # 更新任务状态为FAILURE
         self.update_state(

@@ -13,16 +13,15 @@ from .async_helpers import (
 )
 
 # 数据库上下文管理已移除，仅保留任务相关功能
-from .task_base import BaseTask, SecretFlowTask, WebTask
+from .task_base import BaseTask, WebTask
 
 __all__ = [
     # 任务基类
     "BaseTask",
     "WebTask",
-    "SecretFlowTask",
     # 异步执行助手（仅保留纯计算相关）
     "run_async_safely",
-    # 异常类
+    # 异步异常类
     "AsyncExecutionError",
     "AsyncTimeoutError",
     # 统计功能

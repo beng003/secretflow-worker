@@ -182,7 +182,7 @@ def load_ss_xgb_model(
         tree = {}
         for party in parties:
             pyu = devices[party]
-            party_dir = os.path.join(input_model_dir, party)
+            party_dir = os.path.join(model_dir, party)
             tree_path = os.path.join(party_dir, f"tree_{tree_idx}.pkl")
 
             # 从对应参与方的服务器加载PYUObject（文件检查在PYU端执行）
@@ -199,7 +199,7 @@ def load_ss_xgb_model(
 
         # 加载权重（SPU会自动处理各参与方的文件检查）
         weight_paths = [
-            os.path.join(input_model_dir, party, f"weight_{tree_idx}.share")
+            os.path.join(model_dir, party, f"weight_{tree_idx}.share")
             for party in parties
         ]
         weight = spu_device.load(weight_paths)
@@ -414,10 +414,10 @@ def execute_ss_xgb_predict(devices: Dict[str, PYU], task_config: Dict) -> Dict:
         predictions_pyu = predictions_fed.partitions[receiver_pyu]
 
         # 验证接收方在output_path中有对应路径
-        if receiver_party not in output_path:
-            raise ValueError(f"output_path中缺少接收方'{receiver_party}'的路径")
+        if receiver_party not in output_prediction:
+            raise ValueError(f"output_prediction中缺少接收方'{receiver_party}'的路径")
 
-        receiver_output_path = output_path[receiver_party]
+        receiver_output_path = output_prediction[receiver_party]
 
         # 在接收方PYU上保存预测结果
         logger.info(
