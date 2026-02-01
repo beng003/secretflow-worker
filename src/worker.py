@@ -84,11 +84,12 @@ def main():
             f"--queues={','.join(settings.worker_queues)}",
             f"--hostname={settings.worker_hostname}",
             f"--pool={settings.worker_pool}",
-            f"--prefetch-multiplier={settings.worker_prefetch_multiplier}",  # 每个进程最多1个任务
+            f"--prefetch-multiplier={settings.worker_prefetch_multiplier}",
             f"--max-tasks-per-child={settings.worker_max_tasks_per_child}",
             "--without-gossip",
             "--without-mingle",
-            "--without-heartbeat",  # 禁用心跳，加速关闭
+            # 启用事件广播，让后端的EventReceiver可以监听任务状态
+            # 移除 --without-heartbeat，保持心跳和事件发送
         ]
 
         # 直接启动worker

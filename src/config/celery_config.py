@@ -114,6 +114,8 @@ class CeleryConfig:
             "task_serializer": self.settings.task_serializer,
             "result_serializer": self.settings.result_serializer,
             "accept_content": self.settings.accept_content,
+            # 结果后端配置 - 启用扩展结果格式，包含完整的任务元数据和异常信息
+            "result_extended": True,
             # 时区配置
             "timezone": self.settings.timezone,
             # 队列和路由配置

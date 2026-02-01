@@ -30,6 +30,7 @@ class SecretFlowTask(Task):
 
     # 任务重试配置
     autoretry_for = (ClusterInitError, DeviceConfigError)
+    max_retries = 1  # 最多重试1次
     retry_kwargs = {"max_retries": 1, "countdown": 60}
     retry_backoff = True
     retry_backoff_max = 600
@@ -71,7 +72,7 @@ class SecretFlowTask(Task):
                 "retry_count": self.request.retries,
                 "max_retries": self.max_retries,
                 "error": str(exc),
-                "error_type": type(exc).__name__,
+                "error_type": str(type(exc).__name__),
                 "next_retry_at": datetime.now().isoformat(),
             },
         )
@@ -88,30 +89,30 @@ class SecretFlowTask(Task):
         """
         task_params = args[0] if args else kwargs.get("task_params", {})
         execution_id = task_params.get("execution_id", "unknown")
+        task_id_val = task_params.get("task_id", "unknown")
+        subtask_id_val = task_params.get("subtask_id", "unknown")
+        error_type = type(exc).__name__
+        error_msg = str(exc)
 
-        logger.error(
-            "SecretFlow任务失败: task_id=%s, execution_id=%s, error=%s",
-            task_id,
-            execution_id,
-            str(exc),
-            exc_info=True,
+        # 格式化的详细错误报告
+        error_report = (
+            "\n" + "=" * 80 + "\n"
+            "SecretFlow任务执行失败\n"
+            f"  CELERY_ID: {task_id}\n"
+            f"  任务ID: {task_id_val}\n"
+            f"  子任务ID: {subtask_id_val}\n"
+            f"  执行ID: {execution_id}\n"
+            f"  错误类型: {error_type}\n"
+            f"  错误信息: {error_msg}\n"
+            f"  重试次数: {self.request.retries}/{self.max_retries}\n"
+            f"  重试已耗尽: {'是' if self.request.retries >= self.max_retries else '否'}\n"
+            + "=" * 80
         )
+        logger.error(error_report, exc_info=True)
 
-        # 更新失败状态（额外保障）
-        self.update_state(
-            state="FAILURE",
-            meta={
-                "stage": "task_failed_final",
-                "task_id": task_params.get("task_id"),
-                "subtask_id": task_params.get("subtask_id"),
-                "execution_id": execution_id,
-                "celery_task_id": task_id,
-                "error": str(exc),
-                "error_type": type(exc).__name__,
-                "retries_exhausted": self.request.retries >= self.max_retries,
-                "failed_at": datetime.now().isoformat(),
-            },
-        )
+        # 不再手动调用 update_state，让 Celery 自然处理失败状态
+        # 这样可以避免与 Celery 内部异常序列化机制冲突
+        # 后端可以通过捕获异常或检查 result.state 获取失败信息
 
     def on_success(self, retval, task_id, args, kwargs):
         """任务成功时的回调
@@ -251,26 +252,13 @@ def execute_secretflow_celery_task(self, task_params: Dict[str, Any]) -> Dict[st
                 f"任务执行超时: {execution_time:.2f}秒 > {self.soft_time_limit}秒"
             )
 
-            logger.error(error_msg)
-
-            # 更新超时失败状态
-            self.update_state(
-                state="FAILURE",
-                meta={
-                    "stage": "task_timeout",
-                    "task_id": task_id,
-                    "subtask_id": subtask_id,
-                    "execution_id": execution_id,
-                    "celery_task_id": celery_task_id,
-                    "error": error_msg,
-                    "error_type": "SoftTimeLimitExceeded",
-                    "execution_time": execution_time,
-                    "time_limit": self.soft_time_limit,
-                    "failed_at": datetime.now().isoformat(),
-                },
+            logger.error(
+                f"SecretFlow任务超时: celery_id={celery_task_id}, "
+                f"task_id={task_id}, execution_id={execution_id}, "
+                f"execution_time={execution_time:.2f}秒"
             )
 
-            # 重新抛出异常
+            # 重新抛出异常，让Celery的on_failure回调自动处理FAILURE状态
             raise
 
         # 5. 收集Celery元数据
@@ -319,44 +307,13 @@ def execute_secretflow_celery_task(self, task_params: Dict[str, Any]) -> Dict[st
 
     except Exception as e:
         # 其他错误，不重试，直接失败
-        execution_time = time.time() - execution_start
-        error_type = type(e).__name__
-        error_msg = str(e)
+        # 详细的错误日志会在 on_failure 回调中记录，这里只记录简单信息避免重复
+        logger.info(
+            f"任务执行遇到异常，将由on_failure回调处理: "
+            f"celery_id={celery_task_id}, error_type={str(type(e).__name__)}"
+        )
         
-        # 安全获取参数（防止task_params为None）
-        safe_task_params = task_params if isinstance(task_params, dict) else {}
-        task_id_val = safe_task_params.get("task_id", "unknown")
-        subtask_id_val = safe_task_params.get("subtask_id", "unknown")
-        execution_id_val = safe_task_params.get("execution_id", "unknown")
-
-        error_report = (
-            "\n" + "=" * 80 + "\n"
-            f"SecretFlow任务执行失败\n"
-            f"  CELERY_ID: {celery_task_id}\n"
-            f"  任务ID: {task_id_val}\n"
-            f"  子任务ID: {subtask_id_val}\n"
-            f"  执行ID: {execution_id_val}\n"
-            f"  错误类型: {str(error_type)}\n"
-            f"  错误信息: {str(error_msg)}\n"
-            f"  已执行时间: {execution_time:.2f}秒\n" + "=" * 80
-        )
-        logger.error(error_report, exc_info=True)
-
-        # 更新任务状态为FAILURE
-        self.update_state(
-            state="FAILURE",
-            meta={
-                "task_id": task_id_val,
-                "subtask_id": subtask_id_val,
-                "execution_id": execution_id_val,
-                "error": error_msg,
-                "error_type": error_type,
-                "execution_time": execution_time,
-                "failed_at": datetime.now().isoformat(),
-            },
-        )
-
-        # 重新抛出异常
+        # 重新抛出异常，让Celery的on_failure回调处理日志和状态更新
         raise
 
 

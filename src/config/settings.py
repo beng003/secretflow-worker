@@ -105,7 +105,7 @@ class Settings:
             os.getenv("WORKER_DISABLE_RATE_LIMITS", "true").lower() == "true"
         )
         self.worker_send_task_events = (
-            os.getenv("WORKER_SEND_TASK_EVENTS", "false").lower() == "true"
+            os.getenv("WORKER_SEND_TASK_EVENTS", "true").lower() == "true"
         )
         self.worker_hijack_root_logger = (
             os.getenv("WORKER_HIJACK_ROOT_LOGGER", "false").lower() == "true"
