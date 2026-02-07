@@ -25,11 +25,15 @@ def _ensure_output_dir(path):
         os.makedirs(output_dir, exist_ok=True)
 
 
-def _get_columns_exclude(path, exclude_cols):
-    """获取CSV列名并排除指定列（模块级函数，在PYU上执行）"""
+def _read_csv_drop_keys(filepath, drop_cols=None):
+    """读取CSV并排除指定列（模块级函数，在PYU上执行）"""
     import pandas as pd
-    df = pd.read_csv(path, nrows=0)
-    return [c for c in df.columns if c not in exclude_cols]
+    df = pd.read_csv(filepath)
+    if drop_cols:
+        cols_to_drop = [c for c in drop_cols if c in df.columns]
+        if cols_to_drop:
+            df = df.drop(columns=cols_to_drop)
+    return df
 
 
 def _validate_onehot_encoder_config(task_config: Dict) -> None:
@@ -109,18 +113,34 @@ def execute_onehot_encoder(devices: Dict[str, PYU], task_config: Dict) -> Dict:
         # 读取垂直分区数据
         logger.info("读取垂直分区数据...")
         if drop_keys:
+            # 有重复列时，使用 callable + device 模式创建 partition
+            # 避免 PYUObject 即时物化导致的跨方死锁，也避免 read_csv 的 duplicate column 限制
             logger.info(f"排除重复列: {drop_keys}")
-            # 为每个参与方构建 usecols（排除 drop_keys）
-            pyu_usecols = {}
+            from secretflow.data.core import partition as make_partition
+            partitions = {}
             for party in parties:
                 pyu = devices[party]
-                party_cols_pyu = pyu(_get_columns_exclude)(input_data[party], drop_keys)
-                party_cols = sf.reveal(party_cols_pyu)
-                pyu_usecols[pyu] = party_cols
-                logger.info(f"参与方 {party} 读取列: {party_cols}")
-            vdf: VDataFrame = sf.data.vertical.read_csv(pyu_input_paths, usecols=pyu_usecols)
+                partitions[pyu] = make_partition(
+                    data=_read_csv_drop_keys,
+                    device=pyu,
+                    filepath=input_data[party],
+                    drop_cols=drop_keys,
+                )
+            vdf = VDataFrame(partitions)
         else:
             vdf: VDataFrame = sf.data.vertical.read_csv(pyu_input_paths)
+        logger.info(f"数据读取完成，列: {vdf.columns}")
+
+        # 防御性检查：上游 PSI 输出可能为空
+        try:
+            row_count = len(vdf)
+            logger.info(f"数据行数: {row_count}")
+            if row_count == 0:
+                raise ValueError("输入数据为空（0行），请检查上游 PSI 求交是否有匹配结果")
+        except Exception as e:
+            if "0 sample" in str(e) or "为空" in str(e):
+                raise
+            logger.warning(f"无法获取数据行数: {e}")
 
         # 使用SecretFlow官方OneHotEncoder进行编码
         logger.info("使用SecretFlow OneHotEncoder进行安全编码...")

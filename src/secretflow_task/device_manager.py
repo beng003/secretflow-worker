@@ -42,6 +42,7 @@ class DeviceManager:
         pyu_config: dict | None = None,
         spu_config: dict | None = None,
         heu_config: dict | None = None,
+        sf_init_config: dict | None = None,
     ) -> dict:
         """初始化计算设备
 
@@ -51,24 +52,19 @@ class DeviceManager:
             pyu_config: PYU设备配置，支持多个参与方
             spu_config: SPU设备配置
             heu_config: HEU设备配置
+            sf_init_config: SF集群初始化配置（必传，用于提取参与方列表）
 
         Returns:
             dict: 初始化的设备实例
         """
         devices = {}
 
-        # 从SPU配置中提取参与方信息
+        # 从 sf_init_config.cluster_config.parties 提取参与方（SF初始化是必须的，始终包含参与方信息）
         parties = []
-        if spu_config and "cluster_def" in spu_config:
-            cluster_def = spu_config["cluster_def"]
-            # 处理 cluster_def 可能是字典或对象的情况
-            if isinstance(cluster_def, dict):
-                nodes = cluster_def.get("nodes", [])
-            else:
-                # 尝试作为对象访问（如果是 protobuf 对象）
-                nodes = getattr(cluster_def, "nodes", [])
-
-            parties = [node["party"] for node in nodes if "party" in node]
+        if sf_init_config and isinstance(sf_init_config, dict):
+            parties_dict = sf_init_config.get("cluster_config", {}).get("parties", {})
+            if isinstance(parties_dict, dict):
+                parties = list(parties_dict.keys())
 
         logger.info(f"[调试] 检测到参与方: {parties}")
         logger.info(f"[调试] PYU配置: {pyu_config}")

@@ -215,6 +215,7 @@ def execute_secretflow_task(
             pyu_config={"enabled": True},  # PYU总是需要的
             spu_config=spu_config if spu_config else None,
             heu_config=heu_config if heu_config else None,
+            sf_init_config=sf_init_config,
         )
 
         if not devices:

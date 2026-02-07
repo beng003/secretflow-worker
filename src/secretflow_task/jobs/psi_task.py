@@ -156,6 +156,13 @@ def execute_psi(
             raise ValueError("devices中缺少'spu'设备")
 
         keys = task_config["keys"]
+        # 防御性去重：前端可能偶发传入重复 key，导致双方 key 列数不一致
+        for party, key_list in keys.items():
+            if isinstance(key_list, list):
+                deduped = list(dict.fromkeys(key_list))  # 保序去重
+                if len(deduped) != len(key_list):
+                    logger.warning(f"PSI keys 去重: {party} {key_list} -> {deduped}")
+                    keys[party] = deduped
         input_paths = task_config["input_paths"]
         output_paths = task_config["output_paths"]
         
